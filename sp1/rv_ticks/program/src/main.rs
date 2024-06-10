@@ -3,6 +3,13 @@
 #![no_main]
 sp1_zkvm::entrypoint!(main);
 use fixed::types::I15F17 as Fixed;
+use alloy_sol_types::{sol, SolType};
+
+/// The public values encoded as a tuple that can be easily deserialized inside Solidity.
+type PublicValuesTuple = sol! {
+    tuple(bytes, bytes)
+};
+
 
 pub fn main() {
     // NOTE: values of n larger than 186 will overflow the u128 type,
@@ -13,8 +20,12 @@ pub fn main() {
     let n1_inv = sp1_zkvm::io::read::<[u8; 4]>();
     let (s2_bytes, n_bytes) = tick_volatility2(values, n_inv_sqrt, n1_inv);
 
-    sp1_zkvm::io::commit::<[u8; 4]>(&s2_bytes);
-    sp1_zkvm::io::commit::<[u8; 4]>(&n_bytes);
+
+    // Encocde the public values of the program.
+    let bytes = PublicValuesTuple::abi_encode(&(s2_bytes, n_bytes));
+
+    // Commit to the public values of the program.
+    sp1_zkvm::io::commit_slice(&bytes);
 }
 
 pub fn tick_volatility2(

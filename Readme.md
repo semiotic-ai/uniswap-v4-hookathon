@@ -9,5 +9,5 @@ The workflow goes as follows:
 2. This data is fed into [sp1 program](https://succinctlabs.github.io/sp1/writing-programs/basics.html) to generate a proof that the realized volatility calculation
 was done correctly. Check how it is done is in `sp1` folder.
 
-3. Then, the proof is verified onchain, via a `SP1Verifier` smart contract. Check the `VolatilityHook-UniV4` for the contracts tests and integrations.
+3. Then, the proof is verified onchain, via a `SP1Verifier` smart contract. A proof is written in `.json` and can be generated from the `sp1` folder script. Check the `VolatilityHook-UniV4` for the contracts tests and integrations.
 

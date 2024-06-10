@@ -1,166 +1,119 @@
 //! A simple script to generate and verify the proof of a given program.
-// use fixed::types::I15F17 as Fixed;
 
-// use sp1_sdk::{ProverClient, SP1Stdin};
+use clap::Parser;
+use fixed::types::I15F17 as Fixed;
+use sp1_sdk::{ProverClient, SP1Stdin};
+use std::io::{self, BufRead};
+use std::time::Instant;
 
-// const ELF: &[u8] = include_bytes!("../../program/elf/riscv32im-succinct-zkvm-elf");
+const ELF: &[u8] = include_bytes!("../../program/elf/riscv32im-succinct-zkvm-elf");
 
-use std::num::ParseIntError;
-
-use clap::Error;
-
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// The input CSV file (use '-' for stdin)
+    #[arg(short, long)]
+    input: String,
+}
 fn main() {
-    // calculates and proves the volatility given the prices
-    // TODO: this is sample data from the substream. Attach a pipeline to get it plainly
-    let data: Vec<(&str, &str)> = vec![
-        ("30000000000", "-11110957954678819042"),
-        ("100000000000", "-37032707054197266894"),
-        ("-133273119136", "49405342248031187577"),
-        ("208492762943", "-77207953447434808545"),
-        ("-1131012294", "419180762829823951"),
-        ("672270300000", "-248778376767064561373"),
-        ("1778631269", "-657843845874203202"),
-        ("20000000000", "-7397064428025275384"),
-        ("482086800000", "-178230515044344172669"),
-        ("82315849716", "-30419095156401721403"),
-        ("-1672770648", "618736755211914682"),
-        ("217234590", "-80272093670403086"),
-        ("2000000000", "-739034728308636029"),
-        ("19332888765", "-7143717511682889290"),
-        ("539871299110", "-199400221634678945504"),
-        ("-1499173990", "554034582363680243"),
-        ("10503764361", "-3877861637821964238"),
-        ("5825000000", "-2150491152088852775"),
-        ("-952568644149", "352288037037037060096"),
-        ("30000000000", "-11091892065139417266"),
-        ("-1271162294", "470446140858316382"),
-        ("-13510020648", "5000000000000000000"),
-    ];
+    let args = Args::parse();
+    let ticks: Vec<[u8; 4]> = if args.input == "-" {
+        // Read from stdin
+        let stdin = io::stdin();
+        let mut handle = stdin.lock();
+        read_ticks_from_reader(&mut handle)
+    } else {
+        // Read from file
+        let file = std::fs::File::open(args.input).expect("Could not open file");
+        let mut reader = std::io::BufReader::new(file);
+        read_ticks_from_reader(&mut reader)
+    };
+    println!("ticks: {:?}", ticks);
+    // Calculate  1/(n-1) and the square root of 1/n.
+    // These values are used in the volatility proof.
+    let n = Fixed::from_num(ticks.len());
+    let n_inv_sqrt = Fixed::ONE / n.sqrt();
+    let n_inv_sqrt_bytes = Fixed::to_be_bytes(n_inv_sqrt);
+    let n1_inv = Fixed::ONE / (n - Fixed::ONE);
+    let n1_inv_bytes = Fixed::to_be_bytes(n1_inv);
+    // Calculate the volatility squared, s2, using ticks
+    // let mut sum_u = Fixed::ZERO;
+    // let mut sum_u2 = Fixed::ZERO;
+    let mut ticks_prev = Fixed::from_be_bytes(ticks[0]);
+    /* for idx in (1..ticks.len()) {
+        let ticks_curr = Fixed::from_be_bytes(ticks[idx]);
+        let delta = ticks_curr - ticks_prev;
+        ticks_prev = ticks_curr;
+        sum_u += delta * n_inv_sqrt;
+        sum_u2 += delta * delta * n1_inv;
+    } */
+    let (sum_u, sum_u2) =
+        ticks
+            .iter()
+            .skip(1)
+            .fold((Fixed::ZERO, Fixed::ZERO), |(su, su2), tick| {
+                let ticks_curr = Fixed::from_be_bytes(*tick);
+                let delta = ticks_curr - ticks_prev;
+                ticks_prev = ticks_curr;
+                (su + delta * n_inv_sqrt, su2 + delta * delta * n1_inv)
+            });
+    let s2 = sum_u2 - (sum_u * sum_u) * n1_inv;
+    println!("Volatility squared: {}", s2);
 
-    let ticks = [
-        197314, 197313, 197315, 197311, 197311, 197301, 197301, 197300, 197293, 197291, 197291,
-        197291, 197291, 197291, 197283, 197283, 197282, 197282, 197297, 197297, 197297, 197297,
-    ];
 
-    if ticks.len() != data.len() {
-        panic!("invalid lengths of data and ticks")
-    }
+    // setup the inputs;
+    let mut stdin = SP1Stdin::new();
+    stdin.write(&ticks);
+    stdin.write(&n_inv_sqrt_bytes);
+    stdin.write(&n1_inv_bytes);
 
-    let res = realized_volatility_calc(&data);
-    println!("volatility with closing prices {:?}", res);
+    println!("Configuring new client...");
+    let client = ProverClient::new();
+    println!("Done.");
 
-    let res2 = realized_volatility_calc2(&ticks);
+    println!("Proving...");
+    let (pk, vk) = client.setup(ELF);
+    let start_time = Instant::now();
 
-    // let n = Fixed::from_num(swaps_amounts.len());
-    println!("log returns:  {:?}   ticks: {:?}", res, res2);
 
-    // let mut stdin = SP1Stdin::new();
-    // let n = 20u32;
-    // stdin.write(&n);
-    // let client = ProverClient::new();
-    // let (pk, vk) = client.setup(ELF);
-    // let mut proof = client.prove(&pk, stdin).expect("proving failed");
+    // Generate proof.
+    let mut proof = client.prove_plonk(&pk, stdin).expect("proving failed");
+    println!("Done!");
+    let prove_time = Instant::now() - start_time;
+    println!("Prove time: {} seconds", prove_time.as_secs());
 
-    // // Read output.
-    // let a = proof.public_values.read::<u128>();
-    // let b = proof.public_values.read::<u128>();
-    // println!("a: {}", a);
-    // println!("b: {}", b);
+    // Read output.
+    let a = proof.public_values.read::<[u8; 4]>();
+    let b = proof.public_values.read::<[u8; 4]>();
+    println!("a: {:?}", a);
+    println!("b: {:?}", b);
 
-    // // Verify proof.
-    // client.verify(&proof, &vk).expect("verification failed");
+    // Verify proof.
+    println!("Verifying...");
+    client.verify(&proof, &vk).expect("verification failed");
+    println!("Done!");
 
-    // // Save proof.
-    // proof
-    //     .save("proof-with-io.json")
-    //     .expect("saving proof failed");
+    // Save proof.
+    proof
+        .save("proof-with-io.json")
+        .expect("saving proof failed");
 
     println!("successfully generated and verified proof for the program!")
 }
 
-// Calcualtes the realized volatility by getting the prices from the swap amounts
-fn realized_volatility_calc(data: &Vec<(&str, &str)>) -> Result<f64, ParseIntError> {
-    let mut closing_prices: Vec<f64> = Vec::new();
-
-    for (amount0, amount1) in data {
-        let num0 = amount0.parse::<i128>()?;
-        let num1 = amount1.parse::<i128>()?;
-
-        // Use absolute values for division
-        let abs_num0 = num0.abs();
-        let abs_num1 = num1.abs();
-
-        if abs_num1 != 0 {
-            let result = abs_num0 as f64 / abs_num1 as f64;
-            closing_prices.push(result)
+fn read_ticks_from_reader<R: BufRead>(reader: &mut R) -> Vec<[u8; 4]> {
+    let mut ticks = Vec::new();
+    let mut line = String::new();
+    // Skip the header line
+    reader.read_line(&mut line).expect("Failed to read line");
+    line.clear();
+    while reader.read_line(&mut line).expect("Failed to read line") > 0 {
+        if let Ok(value) = line.trim().parse::<i32>() {
+            ticks.push(value.to_be_bytes());
         } else {
-            println!("Division by zero: {} / {}", abs_num0, abs_num1);
+            panic!("Invalid number in CSV");
         }
+        line.clear();
     }
-
-    if closing_prices.len() % 2 != 0 {
-        panic!("The length of closing_prices must be even.");
-    }
-
-    let mut log_returns: Vec<f64> = Vec::new();
-
-    // gets the log returns
-    // L_r = (P_t / P_t-1)
-    for i in (0..closing_prices.len()).step_by(2) {
-        let price1 = closing_prices[i];
-        let price2 = closing_prices[i + 1];
-
-        let ratio = price2 as f64 / price1 as f64;
-        log_returns.push(ratio.ln());
-    }
-
-    // Volatility calc
-
-    //TODO: check if mean is necessary for the volatility
-    //
-    let mean_log_return = log_returns.iter().sum::<f64>() / log_returns.len() as f64;
-    // equation for the realized volatility:
-    // sqrt(sum(l_r ^2))
-    let variance = log_returns
-        .iter()
-        .map(|&r| (r - mean_log_return).powi(2))
-        .sum::<f64>()
-        / (log_returns.len() as f64 - 1.0);
-    println!("s2: {:?}", variance);
-
-    // the realized volatility
-    let rv: f64 = variance.sqrt();
-    Ok(rv * 100.0)
-}
-
-// calculates the volatility using the tick values
-fn realized_volatility_calc2(ticks: &[i32]) -> Result<f64, ParseIntError> {
-    //  u_i = tick_i - tick_i-1;
-    // sequential return: log(price_i/price_i-1) = log(price_i) - log(price_i-1) = tick_i - tick_i-1
-    let mut u_i: Vec<i32> = Vec::new();
-    for i in (0..ticks.len()).step_by(2) {
-        if i + 1 < ticks.len() {
-            let diff = ticks[i + 1] - ticks[i];
-            u_i.push(diff);
-        }
-    }
-
-    println!("u_i: {:?}", u_i);
-    // u_i2 = u_i ^ 2;
-    let u_i2: Vec<i32> = u_i.iter().map(|&x| x.pow(2)).collect();
-
-    // s2 = 1/(n-1) * ( sum( u_i2 ) - 1/n * sum( u_i )^2 )
-    let n: f64 = ticks.len() as f64;
-    let mut s2: f64 = 0.0;
-    if n > 1.0 {
-        let sum_u_i2 = u_i2.iter().sum::<i32>() as f64;
-        let sum_u_i = u_i.iter().sum::<i32>() as f64;
-        s2 = (1.0 / (n - 1.0)) * ((sum_u_i2) - (1.0 / n) * (sum_u_i).powi(2));
-
-        println!("s2: {}", s2);
-    } else {
-        println!("Not enough data points to calculate s2");
-    }
-
-    Ok(s2)
+    ticks
 }
