@@ -19,11 +19,11 @@ type PublicValuesTuple = sol! {
 #[serde(rename_all = "camelCase")]
 struct Sp1RvTicksFixture {
     s2: String,
-    n: String,
+    values: String,
     n: String,
     ticks: String,
     n_inv_sqrt_bytes: String,
-    n1_inv_bytes: String
+    n1_inv_bytes: String,
     vkey: String,
     public_values: String,
     proof: String,
@@ -107,7 +107,11 @@ fn main() {
 
     // Create the testing fixture so we can test things end-ot-end.
     let fixture = Sp1RvTicksFixture {
-        values, n_inv_sqrt, n1_inv, s2_bytes, n_bytes,
+        values: values.to_string(), 
+        n_inv_sqrt: n_inv_sqrt.to_string(), 
+        n1_inv: n1_inv.to_string() , 
+        s2_bytes: s2_bytes.to_string(), 
+        n_bytes: n_bytes.to_string(),
         vkey: vk.bytes32().to_string(),
         public_values: proof.public_values.bytes().to_string(),
         proof: proof.bytes().to_string(),
