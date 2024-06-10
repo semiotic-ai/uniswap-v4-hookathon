@@ -2,10 +2,10 @@
 
 use clap::Parser;
 use fixed::types::I15F17 as Fixed;
+use serde::{Deserialize, Serialize};
 use sp1_sdk::{ProverClient, SP1Stdin};
 use std::io::{self, BufRead};
 use std::time::Instant;
-use serde::{Deserialize, Serialize};
 
 const ELF: &[u8] = include_bytes!("../../program/elf/riscv32im-succinct-zkvm-elf");
 
@@ -103,14 +103,15 @@ fn main() {
 
     // Deserialize the public values.
     let bytes = proof.public_values.as_slice();
-    let (values, n_inv_sqrt, n1_inv, s2_bytes, n_bytes) = PublicValuesTuple::abi_decode(bytes, false).unwrap();
+    let (values, n_inv_sqrt, n1_inv, s2_bytes, n_bytes) =
+        PublicValuesTuple::abi_decode(bytes, false).unwrap();
 
     // Create the testing fixture so we can test things end-ot-end.
     let fixture = Sp1RvTicksFixture {
-        values: values.to_string(), 
-        n_inv_sqrt: n_inv_sqrt.to_string(), 
-        n1_inv: n1_inv.to_string() , 
-        s2_bytes: s2_bytes.to_string(), 
+        values: values.to_string(),
+        n_inv_sqrt: n_inv_sqrt.to_string(),
+        n1_inv: n1_inv.to_string(),
+        s2_bytes: s2_bytes.to_string(),
         n_bytes: n_bytes.to_string(),
         vkey: vk.bytes32().to_string(),
         public_values: proof.public_values.bytes().to_string(),
@@ -132,14 +133,13 @@ fn main() {
         .save("proof-with-io.json")
         .expect("saving proof failed");
 
-        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        std::fs::create_dir_all(&fixture_path).expect("failed to create fixture path");
-        std::fs::write(
-            fixture_path.join("fixture.json"),
-            serde_json::to_string_pretty(&fixture).unwrap(),
-        )
-        .expect("failed to write fixture");
-
+    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    std::fs::create_dir_all(&fixture_path).expect("failed to create fixture path");
+    std::fs::write(
+        fixture_path.join("fixture.json"),
+        serde_json::to_string_pretty(&fixture).unwrap(),
+    )
+    .expect("failed to write fixture");
 
     println!("successfully generated and verified proof for the program!")
 }
