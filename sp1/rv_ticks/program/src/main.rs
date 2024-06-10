@@ -1,0 +1,45 @@
+//! A simple program to be proven inside the zkVM.
+
+#![no_main]
+sp1_zkvm::entrypoint!(main);
+use fixed::types::I15F17 as Fixed;
+
+pub fn main() {
+    // NOTE: values of n larger than 186 will overflow the u128 type,
+    // resulting in output that doesn't match fibonacci sequence.
+    // However, the resulting proof will still be valid!
+    let values = sp1_zkvm::io::read::<Vec<[u8; 4]>>();
+    let n_inv_sqrt = sp1_zkvm::io::read::<[u8; 4]>();
+    let n1_inv = sp1_zkvm::io::read::<[u8; 4]>();
+    let (s2_bytes, n_bytes) = tick_volatility2(values, n_inv_sqrt, n1_inv);
+
+    sp1_zkvm::io::commit::<[u8; 4]>(&s2_bytes);
+    sp1_zkvm::io::commit::<[u8; 4]>(&n_bytes);
+}
+
+pub fn tick_volatility2(
+    values: Vec<[u8; 4]>,
+    n_inv_sqrt: [u8; 4],
+    n1_inv: [u8; 4],
+) -> ([u8; 4], [u8; 4]) {
+    let n = Fixed::from_num(values.len());
+    let n_inv_sqrt = Fixed::from_be_bytes(n_inv_sqrt);
+    let n1_inv = Fixed::from_be_bytes(n1_inv);
+
+    let mut ticks_prev = Fixed::from_be_bytes(values[0]);
+    let (sum_u, sum_u2) =
+        values
+            .iter()
+            .skip(1)
+            .fold((Fixed::ZERO, Fixed::ZERO), |(sum_u, sum_u2), val| {
+                let ticks_curr = Fixed::from_be_bytes(*val);
+                let delta = ticks_curr - ticks_prev;
+                ticks_prev = ticks_curr;
+                (sum_u + delta * n_inv_sqrt, sum_u2 + delta * delta * n1_inv)
+            });
+
+    let s2_bytes = Fixed::to_be_bytes(sum_u2 - (sum_u * sum_u) * n1_inv);
+    let n_bytes = Fixed::to_be_bytes(n);
+
+    (s2_bytes, n_bytes)
+}

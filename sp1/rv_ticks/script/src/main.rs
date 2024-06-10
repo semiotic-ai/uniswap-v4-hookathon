@@ -7,6 +7,8 @@
 
 use std::num::ParseIntError;
 
+use clap::Error;
+
 fn main() {
     // calculates and proves the volatility given the prices
     // TODO: this is sample data from the substream. Attach a pipeline to get it plainly
@@ -50,6 +52,7 @@ fn main() {
     let res2 = realized_volatility_calc2(&ticks);
 
     // let n = Fixed::from_num(swaps_amounts.len());
+    println!("log returns:  {:?}   ticks: {:?}", res, res2);
 
     // let mut stdin = SP1Stdin::new();
     // let n = 20u32;
@@ -125,13 +128,15 @@ fn realized_volatility_calc(data: &Vec<(&str, &str)>) -> Result<f64, ParseIntErr
         / (log_returns.len() as f64 - 1.0);
     println!("s2: {:?}", variance);
 
+    // the realized volatility
     let rv: f64 = variance.sqrt();
     Ok(rv * 100.0)
 }
 
 // calculates the volatility using the tick values
 fn realized_volatility_calc2(ticks: &[i32]) -> Result<f64, ParseIntError> {
-    //  u_i = tick_i - tick_i-1; // sequential return: log(price_i/price_i-1) = log(price_i) - log(price_i-1) = tick_i - tick_i-1
+    //  u_i = tick_i - tick_i-1;
+    // sequential return: log(price_i/price_i-1) = log(price_i) - log(price_i-1) = tick_i - tick_i-1
     let mut u_i: Vec<i32> = Vec::new();
     for i in (0..ticks.len()).step_by(2) {
         if i + 1 < ticks.len() {
@@ -146,22 +151,16 @@ fn realized_volatility_calc2(ticks: &[i32]) -> Result<f64, ParseIntError> {
 
     // s2 = 1/(n-1) * ( sum( u_i2 ) - 1/n * sum( u_i )^2 )
     let n: f64 = ticks.len() as f64;
+    let mut s2: f64 = 0.0;
     if n > 1.0 {
         let sum_u_i2 = u_i2.iter().sum::<i32>() as f64;
         let sum_u_i = u_i.iter().sum::<i32>() as f64;
-        let s2: f64 = (1.0 / (n - 1.0)) * ((sum_u_i2) - (1.0 / n) * (sum_u_i).powi(2));
+        s2 = (1.0 / (n - 1.0)) * ((sum_u_i2) - (1.0 / n) * (sum_u_i).powi(2));
 
         println!("s2: {}", s2);
     } else {
         println!("Not enough data points to calculate s2");
     }
-    // let (sum_u, sum_u2) = ticks.iter().skip(1).fold((0.0, 0.0), |(su, su2), tick| {
-    //     let ticks_curr = Fixed::from_be_bytes(*tick);
-    //     let delta = ticks_curr - ticks_prev;
-    //     ticks_prev = ticks_curr;
-    //     (su + delta * n_inv_sqrt, su2 + delta * delta * n1_inv)
-    // });
-    // let s2 = sum_u2 - (sum_u * sum_u) * n1_inv;
 
-    Ok(0.0)
+    Ok(s2)
 }

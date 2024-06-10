@@ -1,3 +1,6 @@
 [submodule "realized_volatility_substream"]
 	path = realized_volatility_substream
 	url = git@github.com:semiotic-ai/realized_volatility_substream.git
+[submodule "VolatilityHook-UniV4"]
+	path = VolatilityHook-UniV4
+	url = https://github.com/thanhtrinh2003/VolatilityHook-UniV4

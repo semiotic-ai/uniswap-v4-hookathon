@@ -5,4 +5,5 @@ name = "realized_volatility_prover-program"
 edition = "2021"
 
 [dependencies]
+fixed = "1.27.0"
 sp1-zkvm = { git = "https://github.com/succinctlabs/sp1.git", rev = "v1.0.0-testnet"  }
