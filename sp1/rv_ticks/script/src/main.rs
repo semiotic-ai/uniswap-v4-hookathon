@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 const ELF: &[u8] = include_bytes!("../../program/elf/riscv32im-succinct-zkvm-elf");
 
 /// The public values encoded as a tuple that can be easily deserialized inside Solidity.
-type PublicValuesTuple = sol! {
+/* type PublicValuesTuple = sol! {
     tuple(bytes[], bytes, bytes, bytes, bytes)
-};
+};*/
 
 /// A fixture that can be used to test the verification of SP1 zkVM proofs inside Solidity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +96,7 @@ fn main() {
     let start_time = Instant::now();
 
     // Generate proof.
+    // let mut proof = client.prove(&pk, stdin).expect("proving failed");
     let mut proof = client.prove_plonk(&pk, stdin).expect("proving failed");
     println!("Done!");
     let prove_time = Instant::now() - start_time;
@@ -103,10 +104,10 @@ fn main() {
 
     // Deserialize the public values.
     let bytes = proof.public_values.as_slice();
-    let (values, n_inv_sqrt, n1_inv, s2_bytes, n_bytes) = PublicValuesTuple::abi_decode(bytes, false).unwrap();
+    // let (values, n_inv_sqrt, n1_inv, s2_bytes, n_bytes) = PublicValuesTuple::abi_decode(bytes, false).unwrap();
 
     // Create the testing fixture so we can test things end-ot-end.
-    let fixture = Sp1RvTicksFixture {
+    /* let fixture = Sp1RvTicksFixture {
         values: values.to_string(), 
         n_inv_sqrt: n_inv_sqrt.to_string(), 
         n1_inv: n1_inv.to_string() , 
@@ -115,7 +116,7 @@ fn main() {
         vkey: vk.bytes32().to_string(),
         public_values: proof.public_values.bytes().to_string(),
         proof: proof.bytes().to_string(),
-    };
+    };*/
 
     // // Read output.
     // let b = proof.public_values.read::<[u8; 4]>();
@@ -124,11 +125,12 @@ fn main() {
 
     // Verify proof.
     println!("Verifying...");
-    client.verify(&proof, &vk).expect("verification failed");
+    //client.verify(&proof, &vk).expect("verification failed");
+    client.verify_plonk(&proof, &vk).expect("verification failed");
     println!("Done!");
 
     // Save proof.
-    proof
+    /* proof
         .save("proof-with-io.json")
         .expect("saving proof failed");
 
@@ -138,7 +140,7 @@ fn main() {
             fixture_path.join("fixture.json"),
             serde_json::to_string_pretty(&fixture).unwrap(),
         )
-        .expect("failed to write fixture");
+        .expect("failed to write fixture");*/
 
 
     println!("successfully generated and verified proof for the program!")

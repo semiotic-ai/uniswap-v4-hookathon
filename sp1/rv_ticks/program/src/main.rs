@@ -22,10 +22,10 @@ pub fn main() {
 
 
     // Encocde the public values of the program.
-    let bytes = PublicValuesTuple::abi_encode(&(values.clone(), n_inv_sqrt, n1_inv, s2_bytes, n_bytes));
+//    let bytes = PublicValuesTuple::abi_encode(&(values.clone(), n_inv_sqrt, n1_inv, s2_bytes, n_bytes));
 
     // Commit to the public values of the program.
-    sp1_zkvm::io::commit_slice(&bytes);
+    sp1_zkvm::io::commit_slice(&s2_bytes);
 }
 
 pub fn tick_volatility2(
