@@ -7,7 +7,7 @@ use alloy_sol_types::{sol, SolType};
 
 /// The public values encoded as a tuple that can be easily deserialized inside Solidity.
 type PublicValuesTuple = sol! {
-    tuple(bytes, bytes)
+    tuple(bytes[], bytes, bytes, bytes, bytes)
 };
 
 
@@ -18,11 +18,11 @@ pub fn main() {
     let values = sp1_zkvm::io::read::<Vec<[u8; 4]>>();
     let n_inv_sqrt = sp1_zkvm::io::read::<[u8; 4]>();
     let n1_inv = sp1_zkvm::io::read::<[u8; 4]>();
-    let (s2_bytes, n_bytes) = tick_volatility2(values, n_inv_sqrt, n1_inv);
+    let (s2_bytes, n_bytes) = tick_volatility2(values.clone(), n_inv_sqrt, n1_inv);
 
 
     // Encocde the public values of the program.
-    let bytes = PublicValuesTuple::abi_encode(&(s2_bytes, n_bytes));
+    let bytes = PublicValuesTuple::abi_encode(&(values.clone(), n_inv_sqrt, n1_inv, s2_bytes, n_bytes));
 
     // Commit to the public values of the program.
     sp1_zkvm::io::commit_slice(&bytes);
