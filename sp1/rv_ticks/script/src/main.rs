@@ -1,29 +1,29 @@
 //! A simple script to generate and verify the proof of a given program.
 
+use alloy_sol_types::{sol, SolType};
 use clap::Parser;
 use fixed::types::I15F17 as Fixed;
-use sp1_sdk::{ProverClient, SP1Stdin};
+use sp1_sdk::{HashableKey, ProverClient, SP1Stdin};
 use std::io::{self, BufRead};
 use std::time::Instant;
+use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 const ELF: &[u8] = include_bytes!("../../program/elf/riscv32im-succinct-zkvm-elf");
 
 /// The public values encoded as a tuple that can be easily deserialized inside Solidity.
-/* type PublicValuesTuple = sol! {
-    tuple(bytes[], bytes, bytes, bytes, bytes)
-};*/
+type PublicValuesTuple = sol! {
+    tuple( bytes, uint32, uint32, int32, uint32)
+};
 
 /// A fixture that can be used to test the verification of SP1 zkVM proofs inside Solidity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Sp1RvTicksFixture {
-    s2: String,
-    values: String,
-    n: String,
-    ticks: String,
-    n_inv_sqrt_bytes: String,
-    n1_inv_bytes: String,
+    s2: i32,
+    n: u32,
+    n_inv_sqrt: u32,
+    n1_inv: u32,
     vkey: String,
     public_values: String,
     proof: String,
@@ -104,19 +104,18 @@ fn main() {
 
     // Deserialize the public values.
     let bytes = proof.public_values.as_slice();
-    // let (values, n_inv_sqrt, n1_inv, s2_bytes, n_bytes) = PublicValuesTuple::abi_decode(bytes, false).unwrap();
+    let (values, n_inv_sqrt, n1_inv, s2, n) = PublicValuesTuple::abi_decode(bytes, false).unwrap();
 
     // Create the testing fixture so we can test things end-ot-end.
-    /* let fixture = Sp1RvTicksFixture {
-        values: values.to_string(), 
-        n_inv_sqrt: n_inv_sqrt.to_string(), 
-        n1_inv: n1_inv.to_string() , 
-        s2_bytes: s2_bytes.to_string(), 
-        n_bytes: n_bytes.to_string(),
+    let fixture = Sp1RvTicksFixture {
+        n_inv_sqrt, 
+        n1_inv , 
+        s2,
+        n,
         vkey: vk.bytes32().to_string(),
         public_values: proof.public_values.bytes().to_string(),
         proof: proof.bytes().to_string(),
-    };*/
+    };
 
     // // Read output.
     // let b = proof.public_values.read::<[u8; 4]>();
@@ -130,7 +129,7 @@ fn main() {
     println!("Done!");
 
     // Save proof.
-    /* proof
+    proof
         .save("proof-with-io.json")
         .expect("saving proof failed");
 
@@ -140,7 +139,7 @@ fn main() {
             fixture_path.join("fixture.json"),
             serde_json::to_string_pretty(&fixture).unwrap(),
         )
-        .expect("failed to write fixture");*/
+        .expect("failed to write fixture");
 
 
     println!("successfully generated and verified proof for the program!")
