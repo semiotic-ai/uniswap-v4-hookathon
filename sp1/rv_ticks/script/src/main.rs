@@ -36,6 +36,11 @@ struct Args {
     /// The input CSV file (use '-' for stdin)
     #[arg(short, long)]
     input: String,
+    
+    /// A flag to enable proof generation. Otherwise, the RISC-V program is executed and the public
+    /// values are returned.
+    #[arg(short, long)]
+    prove: bool,
 }
 fn main() {
     let args = Args::parse();
@@ -50,7 +55,10 @@ fn main() {
         let mut reader = std::io::BufReader::new(file);
         read_ticks_from_reader(&mut reader)
     };
-    println!("ticks: {:?}", ticks);
+
+    let build_proof = args.prove;
+    println!("Build proof: {}", build_proof);
+
     // Calculate  1/(n-1) and the square root of 1/n.
     // These values are used in the volatility proof.
     let n = Fixed::from_num(ticks.len());
@@ -81,7 +89,7 @@ fn main() {
             });
     let s2 = sum_u2 - (sum_u * sum_u) * n1_inv;
     println!("Volatility squared: {}", s2);
-
+    println!("... as bytes: {:?}", Fixed::to_be_bytes(s2));
     // setup the inputs;
     let mut stdin = SP1Stdin::new();
     stdin.write(&n_inv_sqrt_bytes);
@@ -91,64 +99,87 @@ fn main() {
     let client = ProverClient::new();
     println!("Done.");
 
-    println!("Proving...");
     let (pk, vk) = client.setup(ELF);
-    let start_time = Instant::now();
 
-    // Generate proof.
-    // let mut proof = client.prove(&pk, stdin).expect("proving failed");
-    let mut proof = client.prove_plonk(&pk, stdin).expect("proving failed");
-    println!("Done!");
-    let prove_time = Instant::now() - start_time;
-    println!("Prove time: {} seconds", prove_time.as_secs());
+    if build_proof {
+        // Generate proof.
+        // let mut proof = client.prove(&pk, stdin).expect("proving failed");
+        println!("Proving...");
+        let start_time = Instant::now();
+        let mut proof = client.prove_plonk(&pk, stdin).expect("proving failed");
+        println!("Done!");
+        let prove_time = Instant::now() - start_time;
+        println!("Prove time: {} seconds", prove_time.as_secs());
 
-    // Read output.
-    let s2 = proof.public_values.read::<[u8; 4]>();
-    let n = proof.public_values.read::<[u8; 4]>();
-    let digest = proof.public_values.read::<[u8; 32]>();
-    println!("s2: {:?}", s2);
-    println!("n: {:?}", n);
-    println!("digest: {:?}", digest);
-    
-    // Save proof.
-    proof
-        .save("proof-with-io.json")
-        .expect("saving proof failed");
-   
-    // Deserialize the public values
-    let bytes = proof.public_values.as_slice();
-    let (n_inv_sqrt, n1_inv, s2, n, digest) = PublicValuesTuple::abi_decode(bytes, false).unwrap();
+        // Read output.
+        let s2 = proof.public_values.read::<[u8; 4]>();
+        let n = proof.public_values.read::<[u8; 4]>();
+        let digest = proof.public_values.read::<[u8; 32]>();
+        println!("s2: {:?}", s2);
+        println!("n: {:?}", n);
+        println!("digest: {:?}", digest);
+        
+        // Save proof.
+        proof
+            .save("proof-with-io.json")
+            .expect("saving proof failed");
+       
+        // Deserialize the public values
+        let bytes = proof.public_values.as_slice();
+        let (n_inv_sqrt, n1_inv, s2, n, digest) = PublicValuesTuple::abi_decode(bytes, false).unwrap();
 
-    // Create the testing fixture so we can test things end-ot-end.
-    let fixture = Sp1RvTicksFixture {
-        n_inv_sqrt: n_inv_sqrt.into(), 
-        n1_inv: n1_inv.into(), 
-        s2: s2.into(),
-        n: n.into(),
-        digest: digest.to_string(),
-        vkey: vk.bytes32().to_string(),
-        public_values: proof.public_values.bytes().to_string(),
-        proof: proof.bytes().to_string(),
-    };
-
-
-    // Verify proof.
-    println!("Verifying...");
-    //client.verify(&proof, &vk).expect("verification failed");
-    client.verify_plonk(&proof, &vk).expect("verification failed");
-    println!("Done!");
+        // Create the testing fixture so we can test things end-ot-end.
+        let fixture = Sp1RvTicksFixture {
+            n_inv_sqrt: n_inv_sqrt.into(), 
+            n1_inv: n1_inv.into(), 
+            s2: s2.into(),
+            n: n.into(),
+            digest: digest.to_string(),
+            vkey: vk.bytes32().to_string(),
+            public_values: proof.public_values.bytes().to_string(),
+            proof: proof.bytes().to_string(),
+        };
 
 
-    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    std::fs::create_dir_all(&fixture_path).expect("failed to create fixture path");
-    std::fs::write(
-        fixture_path.join("fixture.json"),
-        serde_json::to_string_pretty(&fixture).unwrap(),
-        )
-        .expect("failed to write fixture");
+        // Verify proof.
+        println!("Verifying...");
+        //client.verify(&proof, &vk).expect("verification failed");
+        client.verify_plonk(&proof, &vk).expect("verification failed");
+        println!("Done!");
 
 
-    println!("successfully generated and verified proof for the program!")
+        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        std::fs::create_dir_all(&fixture_path).expect("failed to create fixture path");
+        std::fs::write(
+            fixture_path.join("fixture.json"),
+            serde_json::to_string_pretty(&fixture).unwrap(),
+            )
+            .expect("failed to write fixture");
+
+
+        println!("successfully generated and verified proof for the program!")
+
+    } else {
+        println!("Executing RISC-V program...");
+        // Only execute the program and get a `SP1PublicValues` object.
+        let client = ProverClient::new();
+        let (mut public_values, _) = client.execute(ELF, stdin).unwrap();
+        
+        // Read output.
+        let bytes = public_values.as_slice();
+        let (n_inv_sqrt, n1_inv, s2, n, digest) = PublicValuesTuple::abi_decode(bytes, false).unwrap();
+        println!("s2: {:?}", s2.as_slice());
+        println!("n: {}", n);
+        println!("digest: {}", digest);
+        let s2_int32:i32 = s2.into();
+        let s2_fixed = Fixed::from_be_bytes(s2.as_slice().try_into().expect("Invalid bytes"));
+        
+        println!("Volatility squared: {}", s2_fixed);
+
+        let s = s2_fixed.sqrt();
+        println!("Volatility: {}", s);
+
+    }
 }
 
 fn read_ticks_from_reader<R: BufRead>(reader: &mut R) -> Vec<[u8; 4]> {
