@@ -83,7 +83,6 @@ fn main() {
 
     // setup the inputs;
     let mut stdin = SP1Stdin::new();
-    stdin.write(&ticks);
     stdin.write(&n_inv_sqrt_bytes);
     stdin.write(&n1_inv_bytes);
 
