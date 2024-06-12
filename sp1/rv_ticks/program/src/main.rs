@@ -10,7 +10,7 @@ include!("data.rs");
 
 /// The public values encoded as a tuple that can be easily deserialized inside Solidity.
 type PublicValuesTuple = sol! {
-    tuple(bytes[], bytes, bytes, bytes, bytes)
+    tuple( bytes4, bytes4, bytes4, bytes4, bytes32)
 };
 
 
@@ -24,12 +24,10 @@ pub fn main() {
 
 
     // Encocde the public values of the program.
-//    let bytes = PublicValuesTuple::abi_encode(&(values.clone(), n_inv_sqrt, n1_inv, s2_bytes, n_bytes));
+    let bytes = PublicValuesTuple::abi_encode(&(&n_inv_sqrt, n1_inv, s2_bytes, n_bytes, digest));
 
     // Commit to the public values of the program.
-    sp1_zkvm::io::commit_slice(&s2_bytes);
-    sp1_zkvm::io::commit_slice(&n_bytes);
-    sp1_zkvm::io::commit_slice(&digest);
+    sp1_zkvm::io::commit_slice(&bytes);
 }
 
 pub fn tick_volatility2(

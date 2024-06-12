@@ -13,7 +13,7 @@ const ELF: &[u8] = include_bytes!("../../program/elf/riscv32im-succinct-zkvm-elf
 
 /// The public values encoded as a tuple that can be easily deserialized inside Solidity.
 type PublicValuesTuple = sol! {
-    tuple( bytes, uint32, uint32, int32, uint32)
+    tuple( bytes4, bytes4, bytes4, bytes4, bytes32)
 };
 
 /// A fixture that can be used to test the verification of SP1 zkVM proofs inside Solidity.
@@ -24,6 +24,7 @@ struct Sp1RvTicksFixture {
     n: u32,
     n_inv_sqrt: u32,
     n1_inv: u32,
+    digest: String,
     vkey: String,
     public_values: String,
     proof: String,
@@ -101,25 +102,35 @@ fn main() {
     let prove_time = Instant::now() - start_time;
     println!("Prove time: {} seconds", prove_time.as_secs());
 
-    // Deserialize the public values.
+    // Read output.
+    let s2 = proof.public_values.read::<[u8; 4]>();
+    let n = proof.public_values.read::<[u8; 4]>();
+    let digest = proof.public_values.read::<[u8; 32]>();
+    println!("s2: {:?}", s2);
+    println!("n: {:?}", n);
+    println!("digest: {:?}", digest);
+    
+    // Save proof.
+    proof
+        .save("proof-with-io.json")
+        .expect("saving proof failed");
+   
+    // Deserialize the public values
     let bytes = proof.public_values.as_slice();
-    let (values, n_inv_sqrt, n1_inv, s2, n) = PublicValuesTuple::abi_decode(bytes, false).unwrap();
+    let (n_inv_sqrt, n1_inv, s2, n, digest) = PublicValuesTuple::abi_decode(bytes, false).unwrap();
 
     // Create the testing fixture so we can test things end-ot-end.
     let fixture = Sp1RvTicksFixture {
-        n_inv_sqrt, 
-        n1_inv , 
-        s2,
-        n,
+        n_inv_sqrt: n_inv_sqrt.into(), 
+        n1_inv: n1_inv.into(), 
+        s2: s2.into(),
+        n: n.into(),
+        digest: digest.to_string(),
         vkey: vk.bytes32().to_string(),
         public_values: proof.public_values.bytes().to_string(),
         proof: proof.bytes().to_string(),
     };
 
-    // // Read output.
-    // let b = proof.public_values.read::<[u8; 4]>();
-    // println!("a: {:?}", a);
-    // println!("b: {:?}", b);
 
     // Verify proof.
     println!("Verifying...");
@@ -127,16 +138,12 @@ fn main() {
     client.verify_plonk(&proof, &vk).expect("verification failed");
     println!("Done!");
 
-    // Save proof.
-    proof
-        .save("proof-with-io.json")
-        .expect("saving proof failed");
 
-        let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        std::fs::create_dir_all(&fixture_path).expect("failed to create fixture path");
-        std::fs::write(
-            fixture_path.join("fixture.json"),
-            serde_json::to_string_pretty(&fixture).unwrap(),
+    let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    std::fs::create_dir_all(&fixture_path).expect("failed to create fixture path");
+    std::fs::write(
+        fixture_path.join("fixture.json"),
+        serde_json::to_string_pretty(&fixture).unwrap(),
         )
         .expect("failed to write fixture");
 
