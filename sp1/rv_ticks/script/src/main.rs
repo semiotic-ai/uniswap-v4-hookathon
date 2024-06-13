@@ -19,6 +19,7 @@ type PublicValuesTuple = sol! {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Sp1RvTicksFixture {
+    s: i32,
     s2: i32,
     n: u32,
     n_inv_sqrt: u32,
@@ -115,10 +116,17 @@ fn main() {
         let bytes = proof.public_values.as_slice();
         let (n_inv_sqrt, n1_inv, s2, n, digest) = PublicValuesTuple::abi_decode(bytes, false).unwrap();
 
+        let s2_fixed = Fixed::from_be_bytes(s2.as_slice().try_into().expect("Invalid bytes"));
+        let s = s2_fixed.sqrt();
+        println!("Volatility: {}", s);
+
+        let s_int32 = i32::from_be_bytes(s.to_be_bytes());
+        println!("Volatility, i32: {}", s_int32);
         // Create the testing fixture so we can test things end-ot-end.
         let fixture = Sp1RvTicksFixture {
             n_inv_sqrt: n_inv_sqrt.into(), 
             n1_inv: n1_inv.into(), 
+            s: s_int32,
             s2: s2.into(),
             n: n.into(),
             digest: digest.to_string(),
@@ -126,7 +134,6 @@ fn main() {
             public_values: proof.public_values.bytes().to_string(),
             proof: proof.bytes().to_string(),
         };
-
 
         // Verify proof.
         println!("Verifying...");
@@ -160,8 +167,6 @@ fn main() {
         println!("n: {}", n);
         println!("digest: {}", digest);
 
-        
-        let s2_int32 = i32::from_be_bytes(s2.as_slice().try_into().expect("Invalid bytes"));
         let s2_fixed = Fixed::from_be_bytes(s2.as_slice().try_into().expect("Invalid bytes"));
         
         println!("Volatility squared: {}", s2_fixed);
@@ -169,11 +174,8 @@ fn main() {
         let s = s2_fixed.sqrt();
         println!("Volatility: {}", s);
 
-        println!("Volatility squared, i32 {}", s2_int32);
-
         let s_int32 = i32::from_be_bytes(s.to_be_bytes());
         println!("Volatility, i32: {}", s_int32);
-        println!("s_int32 * s_int32: {}", (s_int32 * s_int32) >> Fixed::FRAC_NBITS);
     }
 }
 
