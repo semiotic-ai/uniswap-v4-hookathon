@@ -2,7 +2,7 @@
 
 use alloy_sol_types::{sol, SolType};
 use clap::Parser;
-use fixed::types::I15F17 as Fixed;
+use fixed::types::I24F40 as Fixed;
 use sp1_sdk::{HashableKey, ProverClient, SP1Stdin};
 use std::time::Instant;
 use std::path:: PathBuf;
@@ -12,18 +12,19 @@ include!("../../program/src/data.rs");
 const ELF: &[u8] = include_bytes!("../../program/elf/riscv32im-succinct-zkvm-elf");
 /// The public values encoded as a tuple that can be easily deserialized inside Solidity.
 type PublicValuesTuple = sol! {
-    tuple( bytes4, bytes4, bytes4, bytes4, bytes32)
+    tuple( bytes8, bytes8, bytes8, bytes8, bytes32)
 };
 
+type NumberBytes = [u8; 8];
 /// A fixture that can be used to test the verification of SP1 zkVM proofs inside Solidity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Sp1RvTicksFixture {
-    s: i32,
-    s2: i32,
-    n: u32,
-    n_inv_sqrt: u32,
-    n1_inv: u32,
+    s: i64,
+    s2: i64,
+    n: u64,
+    n_inv_sqrt: u64,
+    n1_inv: u64,
     digest: String,
     vkey: String,
     public_values: String,
@@ -52,13 +53,13 @@ fn main() {
     let n_inv_sqrt_bytes = Fixed::to_be_bytes(n_inv_sqrt);
     let n1_inv = Fixed::ONE / (n - Fixed::ONE);
     let n1_inv_bytes = Fixed::to_be_bytes(n1_inv);
-    let mut ticks_prev = Fixed::from_be_bytes(ticks[0]);
+    let mut ticks_prev = Fixed::from_num(i64::from_be_bytes(ticks[0]));
     let (sum_u, sum_u2) =
         ticks
             .iter()
             .skip(1)
             .fold((Fixed::ZERO, Fixed::ZERO), |(su, su2), tick| {
-                let ticks_curr = Fixed::from_be_bytes(*tick);
+                let ticks_curr = Fixed::from_num(i64::from_be_bytes(*tick));
                 let delta = ticks_curr - ticks_prev;
                 ticks_prev = ticks_curr;
                 (su + delta * n_inv_sqrt, su2 + delta * delta * n1_inv)
@@ -72,11 +73,11 @@ fn main() {
     println!("Volatility: {}", s);
 
     let s2_bytes = Fixed::to_be_bytes(s2);
-    let s2_int32 = i32::from_be_bytes(s2_bytes); 
-    println!("Volatility squared, i32: {}", s2_int32);
+    let s2_int64 = i64::from_be_bytes(s2_bytes); 
+    println!("Volatility squared, i64: {}", s2_int64);
 
-    let s_int32 = i32::from_be_bytes(s.to_be_bytes());
-    println!("Volatility, i32: {}", s_int32);
+    let s_int64 = i64::from_be_bytes(s.to_be_bytes());
+    println!("Volatility, i64: {}", s_int64);
     
     // setup the inputs;
     let mut stdin = SP1Stdin::new();
@@ -100,8 +101,8 @@ fn main() {
         println!("Prove time: {} seconds", prove_time.as_secs());
 
         // Read output.
-        let s2 = proof.public_values.read::<[u8; 4]>();
-        let n = proof.public_values.read::<[u8; 4]>();
+        let s2 = proof.public_values.read::<NumberBytes>();
+        let n = proof.public_values.read::<NumberBytes>();
         let digest = proof.public_values.read::<[u8; 32]>();
         println!("s2: {:?}", s2);
         println!("n: {:?}", n);
@@ -120,13 +121,13 @@ fn main() {
         let s = s2_fixed.sqrt();
         println!("Volatility: {}", s);
 
-        let s_int32 = i32::from_be_bytes(s.to_be_bytes());
-        println!("Volatility, i32: {}", s_int32);
+        let s_int64 = i64::from_be_bytes(s.to_be_bytes());
+        println!("Volatility, i64: {}", s_int64);
         // Create the testing fixture so we can test things end-ot-end.
         let fixture = Sp1RvTicksFixture {
             n_inv_sqrt: n_inv_sqrt.into(), 
             n1_inv: n1_inv.into(), 
-            s: s_int32,
+            s: s_int64,
             s2: s2.into(),
             n: n.into(),
             digest: digest.to_string(),
@@ -174,8 +175,8 @@ fn main() {
         let s = s2_fixed.sqrt();
         println!("Volatility: {}", s);
 
-        let s_int32 = i32::from_be_bytes(s.to_be_bytes());
-        println!("Volatility, i32: {}", s_int32);
+        let s_int64 = i64::from_be_bytes(s.to_be_bytes());
+        println!("Volatility, i64: {}", s_int64);
     }
 }
 
@@ -186,32 +187,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_compare_f32_to_fixed() {
+    fn test_compare_f64_to_fixed() {
         let ticks = DATA;
         
         // We can compare fixed point to floating point results
-        let mut ticks_prev = 0.0;
-        let n_f32: f32 = ticks.len() as f32;
-        let n_inv_sqrt_f32: f32 = 1.0 / n_f32.sqrt();
-        let n1_inv_f32: f32 = 1.0 / (n_f32 - 1.0);
-        let (sum_u_f32, sum_u2_f32) =
+        let mut ticks_prev = i64::from_be_bytes(ticks[0]) as f64;
+        println!("ticks_prev: {}", ticks_prev);
+        let n_f64: f64 = ticks.len() as f64;
+        let n_inv_sqrt_f64: f64 = 1.0 / n_f64.sqrt();
+        let n1_inv_f64: f64 = 1.0 / (n_f64 - 1.0);
+        let (sum_u_f64, sum_u2_f64) =
             ticks
                 .iter()
                 .skip(1)
                .fold((0.0, 0.0), |(su, su2), tick| {
-                    let ticks_curr = i32::from_be_bytes(*tick) as f32;
+                    let ticks_curr = i64::from_be_bytes(*tick) as f64;
                     let delta = ticks_curr - ticks_prev;
                     ticks_prev = ticks_curr;
-                    (su + delta * n_inv_sqrt_f32, su2 + delta * delta * n1_inv_f32)
+                    (su + delta * n_inv_sqrt_f64, su2 + delta * delta * n1_inv_f64)
                 });
 
         // s2 = s * s
         //    = s_int * SCALE_FACTOR * s_int * SCALE_FACTOR 
-        let scale_factor = 0.5_f32.powf(Fixed::FRAC_NBITS as f32);
-        let s2_f32 = (sum_u2_f32 - (sum_u_f32 * sum_u_f32) * n1_inv_f32) * scale_factor * scale_factor;
-        println!("Volatility squared, f32: {}", s2_f32);
-        let s_f32 = s2_f32.sqrt();
-        println!("Volatility, f32: {}", s_f32);
+        let scale_factor = 1.0;
+        let s2_f64 = (sum_u2_f64 - (sum_u_f64 * sum_u_f64) * n1_inv_f64) * scale_factor * scale_factor;
+        println!("Volatility squared, f64: {}", s2_f64);
+        let s_f64 = s2_f64.sqrt();
+        println!("Volatility, f64: {}", s_f64);
+        println!("Volatility ln: {}", s_f64 * 1.0001_f64.ln());
     
         // Calculate  1/(n-1) and the square root of 1/n.
         // These values are used in the volatility proof.
@@ -219,20 +222,22 @@ mod tests {
         let n_inv_sqrt = Fixed::ONE / n.sqrt();
         let _n_inv_sqrt_bytes = Fixed::to_be_bytes(n_inv_sqrt);
         let n1_inv = Fixed::ONE / (n - Fixed::ONE);
+        let n_inv = Fixed::ONE / n;
         let _n1_inv_bytes = Fixed::to_be_bytes(n1_inv);
-        let mut ticks_prev = Fixed::from_be_bytes(ticks[0]);
+        let mut ticks_prev = Fixed::from_num(u64::from_be_bytes(ticks[0]));
+        println!("ticks_prev: {}", ticks_prev);
         let (sum_u, sum_u2) =
             ticks
                 .iter()
                 .skip(1)
                 .fold((Fixed::ZERO, Fixed::ZERO), |(su, su2), tick| {
-                    let ticks_curr = Fixed::from_be_bytes(*tick);
+                    let ticks_curr = Fixed::from_num(u64::from_be_bytes(*tick));
                     let delta = ticks_curr - ticks_prev;
                     ticks_prev = ticks_curr;
-                    (su + delta * n_inv_sqrt, su2 + delta * delta * n1_inv)
+                    (su + delta * n_inv_sqrt, su2 + delta * delta  * n1_inv)
                 });
        
-        let s2 = sum_u2 - (sum_u * sum_u) * n1_inv;
+        let s2 = sum_u2  - (sum_u * sum_u) * n1_inv;
         println!("Volatility squared: {}", s2);
         println!("... as bytes: {:?}", Fixed::to_be_bytes(s2));
 
@@ -240,11 +245,12 @@ mod tests {
         println!("Volatility: {}", s);
 
         let s2_bytes = Fixed::to_be_bytes(s2);
-        let s2_int32 = i32::from_be_bytes(s2_bytes); 
-        println!("Volatility squared, i32: {}", s2_int32);
+        let s2_int32 = i64::from_be_bytes(s2_bytes); 
+        println!("Volatility squared, i64: {}", s2_int32);
 
-        let s_int32 = i32::from_be_bytes(s.to_be_bytes());
-        println!("Volatility, i32: {}", s_int32);
+        let s_int32 = i64::from_be_bytes(s.to_be_bytes());
+        println!("Volatility, i64: {}", s_int32);
+       
         // We can do arithmetic with the integer representation of the fixed point number.
         // We just need to properly account for the scale factor and ensure that we don't overflow.
         // See how the scale factor manifests below:
@@ -255,8 +261,10 @@ mod tests {
         // => s2_int = s_int * s_int * SCALE_FACTOR (need to be aware of overflow when multiplying
         // s_int)
         
-        let s2_with_error = (s_int32 as i64 * s_int32 as i64) >> Fixed::FRAC_NBITS;
+        let s2_with_error = s_int32 as i64 * (s_int32 as i64 >> Fixed::FRAC_NBITS);
         println!("s_int32 * s_int32: {}", s2_with_error); 
+        let s2_with_error_fixed = Fixed::from_num(s2_with_error>> Fixed::FRAC_NBITS);
+        println!("s_int32 * s_int32: {}", s2_with_error_fixed);
         // s2.sqrt() has error <= DELTA = 1/2^(FRAC_NBITS)
         // So s2.sqrt() * s2.sqrt() has error <= 2*S*DELTA + DELTA^2
         assert!((s2_with_error - s2_int32 as i64).abs() <= 2 * s_int32 as i64 + 1);
@@ -264,4 +272,13 @@ mod tests {
         println!("Expected error: {}", 2 * s_int32 as i64 + 1);
     }
 
-}
+    #[test]
+    fn test_log_bases() {
+        let ln1_0001_f64 = 1.0001_f64.ln();
+        let ln1_0001 = Fixed::from_num(ln1_0001_f64);
+        let ln1_0001_bytes = Fixed::to_be_bytes(ln1_0001);
+        let ln1_0001_int32 = i64::from_be_bytes(ln1_0001_bytes);
+        println!("ln(1.0001): {}", ln1_0001_int32);
+    }
+
+} 
