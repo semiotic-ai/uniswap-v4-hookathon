@@ -6,7 +6,7 @@ use fixed::types::I24F40 as Fixed;
 use alloy_sol_types::{sol, SolType};
 use tiny_keccak::{Hasher, Sha3};
 
-include!("data.rs");
+include!("../../script/src/data.rs");
 
 type NumberBytes = [u8; 8];
 /// The public values encoded as a tuple that can be easily deserialized inside Solidity.
@@ -25,7 +25,7 @@ pub fn main() {
 
 
     // Encocde the public values of the program.
-    let bytes = PublicValuesTuple::abi_encode(&(&n_inv_sqrt, n1_inv, s2_bytes, n_bytes, digest));
+    let bytes = PublicValuesTuple::abi_encode(&(n_inv_sqrt, n1_inv, s2_bytes, n_bytes, digest));
 
     // Commit to the public values of the program.
     sp1_zkvm::io::commit_slice(&bytes);
