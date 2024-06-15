@@ -36,10 +36,6 @@ struct Sp1RvTicksFixture {
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// A flag to enable proof generation. Otherwise, the RISC-V program is executed and the public
-    /// values are returned.
-    #[arg(short, long)]
-    prove: bool,
     /// A flag to specify ticks TickSource
     #[arg(short, long)]
     ticks: Option<String>
@@ -59,9 +55,17 @@ fn main() {
     let public_io = prove::calculate_public_data(&ticks);
     let stdin = prove::configure_stdin(public_io.clone());
     let client = ProverClient::new();
-    if build_proof {
-        prove::prove(elf.as_slice(), stdin, client).unwrap();
-    } else {
+    prove::prove(elf.as_slice(), stdin, client).unwrap();
+}
+
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_exec() {
         // Only execute the program and get a `SP1PublicValues` object.
         println!("Executing RISC-V program...");
         let client = ProverClient::new();
@@ -87,14 +91,6 @@ fn main() {
         let s_int64 = i64::from_be_bytes(s.to_be_bytes());
         println!("Volatility, i64: {}", s_int64);
     }
-}
-
-
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
     #[test]
     fn test_compare_f64_to_fixed() {
         let ticks = DATA;
