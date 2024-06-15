@@ -49,8 +49,6 @@ fn main() {
     };
     let ticks = build_elf::build_elf(ticks_source, "src/data.rs", "../program").unwrap();
     let elf = read(ELF_PATH).unwrap();
-    let build_proof = args.prove;
-    println!("Build proof: {}", build_proof);
 
     let public_io = prove::calculate_public_data(&ticks);
     let stdin = prove::configure_stdin(public_io.clone());
