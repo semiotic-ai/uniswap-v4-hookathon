@@ -3,14 +3,19 @@
 use alloy_sol_types::{sol, SolType};
 use clap::Parser;
 use fixed::types::I24F40 as Fixed;
-use sp1_sdk::ProverClient;
+use sp1_sdk::{SP1Stdin, ProverClient};
 use serde::{Deserialize, Serialize};
 use std::fs::read;
-
+use std::time::Duration;
 mod prove;
 mod build_elf;
-
-use build_elf::{TickSource, build_elf};
+use build_elf::{TickSource, build_elf, read_ticks, Swap};
+use anyhow::Result;
+use std::path::PathBuf;
+use std::fs;
+use std::io::{Read, BufRead};
+use regex::Regex;
+use std::cmp::Reverse;
 
 const ELF_PATH: &str = "../program/elf/riscv32im-succinct-zkvm-elf";
 /// The public values encoded as a tuple that can be easily deserialized inside Solidity.
@@ -38,26 +43,184 @@ struct Sp1RvTicksFixture {
 struct Args {
     /// A flag to specify ticks TickSource
     #[arg(short, long)]
-    ticks: Option<String>
+    ticks: Option<String>,
+
+    /// A flag to trigger watch mode
+    #[arg(short, long)]
+    watch: Option<String>,
+
+    /// A flag to execute only, no proof generation
+    #[arg(short, long)]
+    execute: bool
 }
 
 fn main() {
     let args = Args::parse();
-    let ticks_source = match args.ticks {
-        Some(ticks) => TickSource::Jsonl(ticks),
-        None => TickSource::Random
-    };
-    let ticks = build_elf::build_elf(ticks_source, "src/data.rs", "../program").unwrap();
-    let elf = read(ELF_PATH).unwrap();
+    match args.watch {
+        // Continually read files from a dir. 
+        // When there are new files, load the ticks and generate a new proof using those ticks. 
+        // Start from the latest available block and load backwards until there are >= 8192 values for the proof.
+        Some(path) => {
+
+            if let Err(error) = watch_directory(&path, args.execute) {
+                println!("Error loading and proving {}", error);
+            }
+        }
+        None => {
+            let ticks_source = match args.ticks {
+                Some(ticks) => TickSource::Jsonl(ticks),
+                None => TickSource::Random
+            };
+            let ticks = read_ticks(ticks_source);
+            let (elf, stdin, client) = setup(ticks).unwrap();
+            if args.execute {
+                prove::exec(elf.as_slice(), stdin, client);
+            } else {
+                prove::prove(elf.as_slice(), stdin, client);
+            }
+        }
+    }
+}
+
+fn setup (ticks: Vec<NumberBytes>) -> Result<(Vec<u8>, SP1Stdin, ProverClient)> {
+
+    build_elf::build_elf(ticks.clone(), "src/data.rs", "../program")?;
+    let elf = read(ELF_PATH)?;
 
     let public_io = prove::calculate_public_data(&ticks);
     let stdin = prove::configure_stdin(public_io.clone());
     let client = ProverClient::new();
-    prove::prove(elf.as_slice(), stdin, client).unwrap();
+    Ok((elf, stdin, client))
+}
+
+fn setup_and_prove(ticks: Vec<NumberBytes>) -> Result<()> {
+    build_elf::build_elf(ticks.clone(), "src/data.rs", "../program")?;
+    let elf = read(ELF_PATH)?;
+
+    let public_io = prove::calculate_public_data(&ticks);
+    let stdin = prove::configure_stdin(public_io.clone());
+    let client = ProverClient::new();
+    prove::prove(elf.as_slice(), stdin, client)?;
+
+    Ok(())
+
+}
+
+// Given a the path to a directory:
+// Loop and check if there are any new files. If so, start from the latest file, read all indices
+// in the file, and store in vector of ticks. If there are less than 8192 entries in the vector,
+// read the next latest file and continue.
+fn watch_directory(path: &str, exec_flag: bool) -> Result<()> {
+    let latest_block = 0;
+    loop {
+        let ticks = match read_latest_ticks(path, latest_block) {
+            Ok(ticks) => ticks,
+            Err(error) => return Err(error),
+        };
+        let (elf, stdin, client) = setup(ticks)?;
+        if exec_flag {
+            prove::exec(elf.as_slice(), stdin, client);
+        } else {
+            prove::prove(elf.as_slice(), stdin, client);
+        }
+
+    }
+
+    Ok(())
 }
 
 
+// A function to parse the .jsonl files output by the realized_volatility_substream.
+// Returns start and end block numbers for entries in the file.
+/*fn parse_filename(filename: &str) -> Result<(u64, u64)> {
+    // Remove the extension
+    let name_without_ext = filename.trim_end_matches(".jsonl");
+    
+    // Split the filename into start and end blocks
+    let parts: Vec<&str> = name_without_ext.split('-').collect();
+    
+    if parts.len() != 2 {
 
+        return Err(anyhow::anyhow!("Invalid filename format"));
+    }
+
+    // Parse the block numbers
+    let start_block = parts[0].parse::<u64>()?;
+    let end_block = parts[1].parse::<u64>()?;
+
+    Ok((start_block, end_block))
+}*/
+
+fn parse_filename(filename: &str) -> Result<(u64, u64)> {
+    let re = Regex::new(r"(\d+)-(\d+)\.jsonl")?;
+
+    if let Some(caps) = re.captures(filename) {
+        let start_block: u64 = caps.get(1).unwrap().as_str().parse()?;
+        let end_block: u64 = caps.get(2).unwrap().as_str().parse()?;
+        Ok((start_block, end_block))
+    } else {
+        Err(anyhow::anyhow!("Filename does not match the expected format."))
+    }
+}
+
+fn read_latest_ticks(directory: &str, latest_block: u64) -> Result<Vec<NumberBytes>> {
+    let mut latest_block = latest_block;
+    let mut latest_file = String::new();
+    
+    let mut files: Vec<PathBuf> = fs::read_dir(directory)?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_file())
+        .collect();
+
+    files.sort_by_key(|name| {
+        let (_, end_block) = parse_filename(name.to_str().expect("bad file name")).unwrap();
+        Reverse(end_block) 
+    });
+    let (_, new_latest_block) = parse_filename(files[0].to_str().expect("bad file name"))?;
+    if new_latest_block <= latest_block {
+        return Err(anyhow::anyhow!("No new blocks"));
+    }
+
+    let mut ticks: Vec<NumberBytes> = Vec::new();
+    for file in files {
+        let file = std::fs::File::open(file).expect("Could not open file");
+        let mut reader = std::io::BufReader::new(file);
+        let new_ticks = read_ticks_from_jsonl(&mut reader)?;
+        ticks.extend(new_ticks.into_iter()); 
+        if ticks.len() >= 8192 { break };
+    }
+    Ok(ticks)
+}
+
+fn read_ticks_from_jsonl<R: Read>(reader: &mut R) -> Result<Vec<NumberBytes>> {
+    let mut ticks = Vec::new();
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .from_reader(reader);
+    for result in rdr.deserialize() {
+        let swap: Swap = result?;
+        ticks.push((swap.tick as i64).to_be_bytes());
+    }
+    println!("{:?}", ticks);
+    Ok(ticks)
+}
+fn read_ticks_from_reader<R: BufRead>(reader: &mut R) -> Vec<NumberBytes> {
+    let mut ticks = Vec::new();
+    let mut line = String::new();
+    // Skip the header line
+    reader.read_line(&mut line).expect("Failed to read line");
+    line.clear();
+    while reader.read_line(&mut line).expect("Failed to read line") > 0 {
+        if let Ok(value) = line.trim().parse::<i64>() {
+            ticks.push((value as i64).to_be_bytes());
+        } else {
+            panic!("Invalid number in CSV");
+        }
+        line.clear();
+    }
+    ticks
+}
 #[cfg(test)]
 mod tests {
     use super::*;

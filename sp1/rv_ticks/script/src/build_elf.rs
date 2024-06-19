@@ -51,17 +51,16 @@ fn write_ticks_to_file(ticks: Vec<NumberBytes>, file: &str) -> io::Result<()> {
     Ok(())
 }
 
-pub fn build_elf(tick_source: TickSource, tick_dest_file: &str, program_path: &str ) -> io::Result<Vec<NumberBytes>>{
+pub fn build_elf(ticks: Vec<NumberBytes>, tick_dest_file: &str, program_path: &str ) -> io::Result<()>{
         // Define the output directory relative to the build script's location
-    let ticks = read_ticks(tick_source);
     write_ticks_to_file(ticks.clone(), tick_dest_file)?;
     build_program(program_path);
 
-    Ok(ticks)
+    Ok(())
 }
 
 #[derive(Debug, Deserialize)]
-struct Swap {
+pub struct Swap {
     evt_tx_hash: String,
     evt_index: u32,
     evt_block_time: String,
@@ -72,10 +71,10 @@ struct Swap {
     amount1: String,
     sqrt_price_x96: String,
     liquidity: String,
-    tick: i64 
+    pub tick: i64 
 }
 
-fn read_ticks_from_jsonl<R: Read>(reader: &mut R) -> Result<Vec<NumberBytes>, Box<dyn Error>> {
+pub fn read_ticks_from_jsonl<R: Read>(reader: &mut R) -> Result<Vec<NumberBytes>, Box<dyn Error>> {
     let mut ticks = Vec::new();
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(false)

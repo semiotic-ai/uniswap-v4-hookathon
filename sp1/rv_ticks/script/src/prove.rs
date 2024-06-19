@@ -52,7 +52,7 @@ pub fn calculate_public_data(ticks: &[NumberBytes]) -> PublicData {
                 (su + delta * n_inv_sqrt, su2 + delta * delta * n1_inv)
             });
     let s2 = sum_u2 - (sum_u * sum_u) * n1_inv;
-
+    println!("Volatility squared {}", s2);
     PublicData{n_inv_sqrt, n1_inv, s2}
 }
 pub fn configure_stdin(public_io: PublicData) -> SP1Stdin{
@@ -62,8 +62,8 @@ pub fn configure_stdin(public_io: PublicData) -> SP1Stdin{
     stdin.write(&n_inv_sqrt_bytes);
     stdin.write(&n1_inv_bytes);
     stdin
-    
 }
+
 pub fn prove(elf: &[u8], stdin: SP1Stdin, client: ProverClient) -> Result<()> {
     // Calculate  1/(n-1) and the square root of 1/n.
     // These values are used in the volatility proof.
@@ -120,6 +120,29 @@ pub fn prove(elf: &[u8], stdin: SP1Stdin, client: ProverClient) -> Result<()> {
 
 
     println!("successfully generated and verified proof for the program!");
+    Ok(())
+}
+
+pub fn exec(elf: &[u8], stdin: SP1Stdin, client: ProverClient) -> Result<()> {
+    println!("Execution only.");
+    let (mut public_values, _) = client.execute(elf, stdin)?;
+
+    // Read output.
+    let s2 = public_values.read::<NumberBytes>();
+    let n = public_values.read::<NumberBytes>();
+    let digest = public_values.read::<[u8; 32]>();
+    
+   
+    // Deserialize the public values
+    let bytes = public_values.as_slice();
+    let (n_inv_sqrt, n1_inv, s2, n, digest) = PublicValuesTuple::abi_decode(bytes, false)?;
+    let s2_fixed = Fixed::from_be_bytes(s2.as_slice().try_into()?);
+    println!("Volatility squared: {}", s2_fixed);
+    let s = s2_fixed.sqrt();
+    // Create the testing fixture so we can test things end-ot-end.
+    
+    println!("Volatility: {}", s);
+
     Ok(())
 }
 
