@@ -181,7 +181,7 @@ fn read_latest_ticks(directory: &str, latest_block: u64) -> Result<Vec<NumberByt
     if new_latest_block <= latest_block {
         return Err(anyhow::anyhow!("No new blocks"));
     }
-
+    println!("Latest block: {}", new_latest_block);
     let mut ticks: Vec<NumberBytes> = Vec::new();
     for file in files {
         let file = std::fs::File::open(file).expect("Could not open file");
@@ -202,7 +202,6 @@ fn read_ticks_from_jsonl<R: Read>(reader: &mut R) -> Result<Vec<NumberBytes>> {
         let swap: Swap = result?;
         ticks.push((swap.tick as i64).to_be_bytes());
     }
-    println!("{:?}", ticks);
     Ok(ticks)
 }
 fn read_ticks_from_reader<R: BufRead>(reader: &mut R) -> Vec<NumberBytes> {

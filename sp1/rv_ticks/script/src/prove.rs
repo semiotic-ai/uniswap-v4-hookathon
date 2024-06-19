@@ -90,15 +90,19 @@ pub fn prove(elf: &[u8], stdin: SP1Stdin, client: ProverClient) -> Result<()> {
     // Deserialize the public values
     let bytes = proof.public_values.as_slice();
     let (n_inv_sqrt, n1_inv, s2, n, digest) = PublicValuesTuple::abi_decode(bytes, false)?;
-    let s2_fixed = Fixed::from_num(i64::from(s2));
+    let s2_bytes: NumberBytes = s2.as_slice().try_into()?;
+    let n_inv_sqrt_bytes: NumberBytes = n_inv_sqrt.as_slice().try_into()?;
+    let n_bytes: NumberBytes = n.as_slice().try_into()?;
+    let n1_inv_bytes: NumberBytes = n1_inv.as_slice().try_into()?;
+    let s2_fixed = Fixed::from_be_bytes(s2_bytes);
     let s = s2_fixed.sqrt();
     // Create the testing fixture so we can test things end-ot-end.
     let fixture = Sp1RvTicksFixture {
-        n_inv_sqrt: n_inv_sqrt.into(), 
-        n1_inv: n1_inv.into(), 
+        n_inv_sqrt: u64::from_be_bytes(n_inv_sqrt_bytes), 
+        n1_inv: u64::from_be_bytes(n1_inv_bytes), 
         s: i64::from_be_bytes(s.to_be_bytes()),
-        s2: s2.into(),
-        n: n.into(),
+        s2: i64::from_be_bytes(s2_bytes), 
+        n: u64::from_be_bytes(n_bytes),
         digest: digest.to_string(),
         vkey: vk.bytes32().to_string(),
         public_values: proof.public_values.bytes().to_string(),
