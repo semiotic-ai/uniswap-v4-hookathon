@@ -1,20 +1,21 @@
-
 //! A simple script to generate and verify the proof of a given program.
 
+use crate::build_elf::{self, NumberBytes};
+use crate::prove;
 use alloy_sol_types::{sol, SolType};
-use fixed::types::I24F40 as Fixed;
-use sp1_sdk::{HashableKey, ProverClient, SP1Stdin};
-use std::time::Instant;
-use std::path:: PathBuf;
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use fixed::types::I24F40 as Fixed;
+use serde::{Deserialize, Serialize};
+use sp1_sdk::{HashableKey, ProverClient, SP1Stdin};
+use std::fs::read;
+use std::path::PathBuf;
+use std::time::Instant;
 
 /// The public values encoded as a tuple that can be easily deserialized inside Solidity.
-type PublicValuesTuple = sol! {
+pub type PublicValuesTuple = sol! {
     tuple( bytes8, bytes8, bytes8, bytes8, bytes32)
 };
 
-type NumberBytes = [u8; 8];
 /// A fixture that can be used to test the verification of SP1 zkVM proofs inside Solidity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -36,6 +37,16 @@ pub struct PublicData {
     pub s2: Fixed,
 }
 
+pub fn setup(elf_path: &str, ticks: Vec<NumberBytes>) -> Result<(Vec<u8>, SP1Stdin, ProverClient)> {
+    build_elf::build_elf(ticks.clone(), "src/data.rs", "../program")?;
+    let elf = read(elf_path)?;
+
+    let public_io = prove::calculate_public_data(&ticks);
+    let stdin = prove::configure_stdin(public_io.clone());
+    let client = ProverClient::new();
+    Ok((elf, stdin, client))
+}
+
 pub fn calculate_public_data(ticks: &[NumberBytes]) -> PublicData {
     let n = Fixed::from_num(ticks.len());
     let n_inv_sqrt = Fixed::ONE / n.sqrt();
@@ -53,9 +64,13 @@ pub fn calculate_public_data(ticks: &[NumberBytes]) -> PublicData {
             });
     let s2 = sum_u2 - (sum_u * sum_u) * n1_inv;
     println!("Volatility squared {}", s2);
-    PublicData{n_inv_sqrt, n1_inv, s2}
+    PublicData {
+        n_inv_sqrt,
+        n1_inv,
+        s2,
+    }
 }
-pub fn configure_stdin(public_io: PublicData) -> SP1Stdin{
+pub fn configure_stdin(public_io: PublicData) -> SP1Stdin {
     let n_inv_sqrt_bytes = Fixed::to_be_bytes(public_io.n_inv_sqrt);
     let n1_inv_bytes = Fixed::to_be_bytes(public_io.n1_inv);
     let mut stdin = SP1Stdin::new();
@@ -82,11 +97,10 @@ pub fn prove(elf: &[u8], stdin: SP1Stdin, client: ProverClient) -> Result<()> {
     let s2 = proof.public_values.read::<NumberBytes>();
     let n = proof.public_values.read::<NumberBytes>();
     let digest = proof.public_values.read::<[u8; 32]>();
-    
+
     // Save proof.
-    proof
-        .save("proof-with-io.json")?;
-   
+    proof.save("proof-with-io.json")?;
+
     // Deserialize the public values
     let bytes = proof.public_values.as_slice();
     let (n_inv_sqrt, n1_inv, s2, n, digest) = PublicValuesTuple::abi_decode(bytes, false)?;
@@ -98,10 +112,10 @@ pub fn prove(elf: &[u8], stdin: SP1Stdin, client: ProverClient) -> Result<()> {
     let s = s2_fixed.sqrt();
     // Create the testing fixture so we can test things end-ot-end.
     let fixture = Sp1RvTicksFixture {
-        n_inv_sqrt: u64::from_be_bytes(n_inv_sqrt_bytes), 
-        n1_inv: u64::from_be_bytes(n1_inv_bytes), 
+        n_inv_sqrt: u64::from_be_bytes(n_inv_sqrt_bytes),
+        n1_inv: u64::from_be_bytes(n1_inv_bytes),
         s: i64::from_be_bytes(s.to_be_bytes()),
-        s2: i64::from_be_bytes(s2_bytes), 
+        s2: i64::from_be_bytes(s2_bytes),
         n: u64::from_be_bytes(n_bytes),
         digest: digest.to_string(),
         vkey: vk.bytes32().to_string(),
@@ -114,14 +128,12 @@ pub fn prove(elf: &[u8], stdin: SP1Stdin, client: ProverClient) -> Result<()> {
     client.verify_plonk(&proof, &vk)?;
     println!("Done!");
 
-
     let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     std::fs::create_dir_all(&fixture_path).expect("failed to create fixture path");
     std::fs::write(
         fixture_path.join("fixture.json"),
         serde_json::to_string_pretty(&fixture).unwrap(),
-        )?;
-
+    )?;
 
     println!("successfully generated and verified proof for the program!");
     Ok(())
@@ -135,8 +147,7 @@ pub fn exec(elf: &[u8], stdin: SP1Stdin, client: ProverClient) -> Result<()> {
     let s2 = public_values.read::<NumberBytes>();
     let n = public_values.read::<NumberBytes>();
     let digest = public_values.read::<[u8; 32]>();
-    
-   
+
     // Deserialize the public values
     let bytes = public_values.as_slice();
     let (n_inv_sqrt, n1_inv, s2, n, digest) = PublicValuesTuple::abi_decode(bytes, false)?;
@@ -144,11 +155,8 @@ pub fn exec(elf: &[u8], stdin: SP1Stdin, client: ProverClient) -> Result<()> {
     println!("Volatility squared: {}", s2_fixed);
     let s = s2_fixed.sqrt();
     // Create the testing fixture so we can test things end-ot-end.
-    
+
     println!("Volatility: {}", s);
 
     Ok(())
 }
-
-
-

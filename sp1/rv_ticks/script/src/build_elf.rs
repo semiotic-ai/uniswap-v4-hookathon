@@ -1,27 +1,40 @@
-use std::path::Path;
-use std::fs;
-use std::fs::File;
-use std::io::{self, Write, BufRead, Read};
-use std::env;
-use rand_distr::{Distribution, Normal};
-use rand::thread_rng;
-use serde::Deserialize;
-use csv;
-use std::error::Error;
+use anyhow::{Result, Context};
 use chrono::Local;
+use rand::thread_rng;
+use rand_distr::{Distribution, Normal};
+use serde::Deserialize;
+use std::fs::File;
+use std::io::{BufRead, Read, Write};
 use std::{
     io::BufReader,
     process::{Command, Stdio},
     thread,
 };
-use cargo_metadata::MetadataCommand;
+use jsonl::read;
 
-type NumberBytes = [u8; 8];
+pub type NumberBytes = [u8; 8];
+
 const N: usize = 8192;
+
 pub enum TickSource {
     Random,
     Jsonl(String),
-    Csv(String)
+    Csv(String),
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Swap {
+    evt_tx_hash: String,
+    evt_index: u32,
+    evt_block_time: String,
+    evt_block_num: u64,
+    sender: [u8; 20],
+    recipient: [u8; 20],
+    amount0: String,
+    amount1: String,
+    sqrt_price_x96: String,
+    liquidity: String,
+    pub tick: i64,
 }
 
 pub fn read_ticks(source: TickSource) -> Vec<NumberBytes> {
@@ -31,7 +44,7 @@ pub fn read_ticks(source: TickSource) -> Vec<NumberBytes> {
             let file = std::fs::File::open(file).expect("Could not open file");
             let mut reader = std::io::BufReader::new(file);
             read_ticks_from_jsonl(&mut reader).unwrap()
-        },
+        }
         TickSource::Csv(file) => {
             let file = std::fs::File::open(file).expect("Could not open file");
             let mut reader = std::io::BufReader::new(file);
@@ -40,41 +53,38 @@ pub fn read_ticks(source: TickSource) -> Vec<NumberBytes> {
     }
 }
 
-fn write_ticks_to_file(ticks: Vec<NumberBytes>, file: &str) -> io::Result<()> {
+fn write_ticks_to_file(ticks: Vec<NumberBytes>, file: &str) -> Result<()> {
     let mut f = File::create(file)?;
 
-    writeln!(f, "const DATA: &[ [u8; 8] ] = &[\n")?;
+    writeln!(f, "const DATA: &[ [u8; 8] ] = &[\n").with_context(|| format!("Failed to write ticks to file, {:?}", f))?;
     for record in ticks {
-        writeln!(f, "    [{}],\n", record.iter().map(|x| x.to_string()).collect::<Vec<String>>().join(", "))?;
+        writeln!(
+            f,
+            "    [{}],\n",
+            record
+                .iter()
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        ).with_context(|| format!("Failed to write ticks to file, {:?}", f))?;
     }
-    writeln!(f, "];")?;
+    writeln!(f, "];").with_context(|| format!("Failed to write ticks to file, {:?}", f))?;
     Ok(())
 }
 
-pub fn build_elf(ticks: Vec<NumberBytes>, tick_dest_file: &str, program_path: &str ) -> io::Result<()>{
-        // Define the output directory relative to the build script's location
-    write_ticks_to_file(ticks.clone(), tick_dest_file)?;
+pub fn build_elf(
+    ticks: Vec<NumberBytes>,
+    tick_dest_file: &str,
+    program_path: &str,
+) -> Result<()> {
+    // Define the output directory relative to the build script's location
+    write_ticks_to_file(ticks, tick_dest_file)?;
     build_program(program_path);
 
     Ok(())
 }
 
-#[derive(Debug, Deserialize)]
-pub struct Swap {
-    evt_tx_hash: String,
-    evt_index: u32,
-    evt_block_time: String,
-    evt_block_num: u64,
-    sender: [u8; 20] ,
-    recipient: [u8; 20],
-    amount0: String,
-    amount1: String,
-    sqrt_price_x96: String,
-    liquidity: String,
-    pub tick: i64 
-}
-
-pub fn read_ticks_from_jsonl<R: Read>(reader: &mut R) -> Result<Vec<NumberBytes>, Box<dyn Error>> {
+pub fn read_ticks_from_jsonl<R: BufRead>(reader: &mut R) -> Result<Vec<NumberBytes>> {
     let mut ticks = Vec::new();
     let mut rdr = csv::ReaderBuilder::new()
         .has_headers(false)
@@ -86,6 +96,7 @@ pub fn read_ticks_from_jsonl<R: Read>(reader: &mut R) -> Result<Vec<NumberBytes>
     println!("{:?}", ticks);
     Ok(ticks)
 }
+
 fn read_ticks_from_reader<R: BufRead>(reader: &mut R) -> Vec<NumberBytes> {
     let mut ticks = Vec::new();
     let mut line = String::new();
@@ -94,7 +105,7 @@ fn read_ticks_from_reader<R: BufRead>(reader: &mut R) -> Vec<NumberBytes> {
     line.clear();
     while reader.read_line(&mut line).expect("Failed to read line") > 0 {
         if let Ok(value) = line.trim().parse::<i64>() {
-            ticks.push((value as i64).to_be_bytes());
+            ticks.push((value).to_be_bytes());
         } else {
             panic!("Invalid number in CSV");
         }
@@ -106,19 +117,21 @@ fn read_ticks_from_reader<R: BufRead>(reader: &mut R) -> Vec<NumberBytes> {
 fn ticks() -> Vec<NumberBytes> {
     // Create a random number generator
     let mut rng = thread_rng();
-    
+
     // Define the mean (mu) and standard deviation (sigma)
     let mu = 0.0;
     let sigma = 2.0f32.powf(24.0);
 
     // Create a Normal distribution with the specified mean and standard deviation
     let normal = Normal::new(mu, sigma).unwrap();
-    let rand_vec: Vec<i64> = (0..N).map(|_| {
-        let r_f64: f64 = normal.sample(&mut rng).into();
-        r_f64.round() as i64 }).collect();
+    let rand_vec: Vec<i64> = (0..N)
+        .map(|_| {
+            let r_f64: f64 = normal.sample(&mut rng).into();
+            r_f64.round() as i64
+        })
+        .collect();
     rand_vec.iter().map(|x| x.to_be_bytes()).collect()
 }
-
 
 fn current_datetime() -> String {
     let now = Local::now();
