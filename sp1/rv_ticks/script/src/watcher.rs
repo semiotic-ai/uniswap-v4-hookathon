@@ -47,8 +47,6 @@ fn parse_filename(filename: &str) -> Result<(u64, u64)> {
 }
 
 fn read_latest_ticks(directory: &str, latest_block: u64) -> Result<(Vec<NumberBytes>, u64)> {
-    let mut latest_file = String::new();
-
     let mut files: Vec<PathBuf> = fs::read_dir(directory)?
         .filter_map(Result::ok)
         .map(|entry| entry.path())
@@ -66,11 +64,13 @@ fn read_latest_ticks(directory: &str, latest_block: u64) -> Result<(Vec<NumberBy
     println!("Latest block: {}", new_latest_block);
     let mut ticks: Vec<NumberBytes> = Vec::new();
     for file in files {
+        let (start_block, _) = parse_filename(file.to_str().expect("bad file name"))?;
         let file = std::fs::File::open(file).expect("Could not open file");
         let mut reader = std::io::BufReader::new(file);
         let new_ticks = read_ticks_from_jsonl(&mut reader)?;
         ticks.extend(new_ticks.into_iter());
-        if ticks.len() >= 8192 {
+        let num_blocks = new_latest_block - start_block;
+        if num_blocks >= 8192 {
             break;
         };
     }
