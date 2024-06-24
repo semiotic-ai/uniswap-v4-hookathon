@@ -93,7 +93,6 @@ pub fn read_ticks_from_jsonl<R: BufRead>(reader: &mut R) -> Result<Vec<NumberByt
         let swap: Swap = result?;
         ticks.push((swap.tick as i64).to_be_bytes());
     }
-    println!("{:?}", ticks);
     Ok(ticks)
 }
 
