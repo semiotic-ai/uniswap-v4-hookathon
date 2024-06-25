@@ -10,11 +10,12 @@ use std::path::PathBuf;
 // Loop and check if there are any new files. If so, start from the latest file, read all indices
 // in the file, and store in vector of ticks. If there are less than 8192 entries in the vector,
 // read the next latest file and continue.
-pub fn watch_directory(
+pub async fn watch_directory(
     elf_path: &str,
     path: &str,
     latest_block: u64,
     exec_flag: bool,
+    push_flag: bool
 ) -> Result<u64> {
     let (ticks, latest_block) = match read_latest_ticks(path, latest_block) {
         Ok(ticks) => ticks,
@@ -24,7 +25,7 @@ pub fn watch_directory(
     if exec_flag {
         prove::exec(elf.as_slice(), stdin, client)?;
     } else {
-        prove::prove(elf.as_slice(), stdin, client)?;
+        prove::prove(elf.as_slice(), stdin, client, push_flag).await?;
     }
 
     Ok(latest_block)

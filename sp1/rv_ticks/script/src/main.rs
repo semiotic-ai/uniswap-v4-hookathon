@@ -23,9 +23,14 @@ struct Args {
     /// A flag to execute only, no proof generation
     #[arg(short, long)]
     execute: bool,
+
+    /// A flag to enable pushing proofs on-chain via contract calls
+    #[arg(short, long)]
+    push: bool,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Args::parse();
     match args.watch {
         // Continually read files from a dir.
@@ -34,7 +39,7 @@ fn main() {
         Some(path) => {
             let mut latest_block = 0;
             loop {
-                match watcher::watch_directory(ELF_PATH, &path, latest_block, args.execute) {
+                match watcher::watch_directory(ELF_PATH, &path, latest_block, args.execute, args.push).await {
                     Ok(block) => {
                         latest_block = block;
                         println!("Latest block: {}", block);
@@ -53,7 +58,7 @@ fn main() {
             if args.execute {
                 prove::exec(elf.as_slice(), stdin, client).unwrap();
             } else {
-                prove::prove(elf.as_slice(), stdin, client).unwrap();
+                prove::prove(elf.as_slice(), stdin, client, false).await.unwrap();
             }
         }
     }

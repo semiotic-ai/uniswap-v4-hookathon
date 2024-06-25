@@ -10,6 +10,12 @@ use sp1_sdk::{HashableKey, ProverClient, SP1Stdin};
 use std::fs::read;
 use std::path::PathBuf;
 use std::time::Instant;
+use alloy_network::EthereumWallet;
+use alloy_primitives::{address, Bytes, FixedBytes};
+use alloy_provider::ProviderBuilder;
+use alloy_signer_local::PrivateKeySigner;
+use std::env;
+use std::str::FromStr;
 
 /// The public values encoded as a tuple that can be easily deserialized inside Solidity.
 pub type PublicValuesTuple = sol! {
@@ -37,6 +43,16 @@ pub struct PublicData {
     pub s2: Fixed,
 }
 
+
+sol! {
+    #[sol(rpc)] // <-- Important! Generates the necessary `SnarkBasedFeeOracle` struct and function methods.
+    contract SnarkBasedFeeOracle {
+        constructor(address) {} // The `deploy` method will also include any constructor arguments.
+
+        #[derive(Debug)]
+        function verifyAndUpdate(bytes proof, bytes public_values);
+    }
+}
 pub fn setup(elf_path: &str, ticks: Vec<NumberBytes>) -> Result<(Vec<u8>, SP1Stdin, ProverClient)> {
     build_elf::build_elf(ticks.clone(), "src/data.rs", "../program")?;
     let elf = read(elf_path)?;
@@ -78,8 +94,41 @@ pub fn configure_stdin(public_io: PublicData) -> SP1Stdin {
     stdin.write(&n1_inv_bytes);
     stdin
 }
+async fn send_proof(proof: Bytes, public_values: Bytes) -> Result<()> {
+    // Need a private key for signing the transaction
+    let private_key = env::var("PRIVATE_KEY")?;
+    let drpc_key = env::var("DRPC_KEY")?;
+    let drpc_url = format!(
+        "https://lb.drpc.org/ogrpc?network=sepolia&dkey={}",
+        drpc_key
+    );
+    let signer = PrivateKeySigner::from_bytes(&FixedBytes::from_str(&private_key)?)?;
+    let wallet = EthereumWallet::new(signer);
 
-pub fn prove(elf: &[u8], stdin: SP1Stdin, client: ProverClient) -> Result<()> {
+    // Build a provider.
+    let provider = ProviderBuilder::new()
+        .with_recommended_fillers()
+        .wallet(wallet)
+        .on_builtin(&drpc_url)
+        .await?;
+
+    // Create a new contract instance can be created with `SnarkBasedFeeOracle::new`.
+    let address = address!("6Ae1e19F65b474B7Eff9A22F33cc72611b0FC24A");
+    let contract = SnarkBasedFeeOracle::new(address, &provider);
+
+    // Build a call to the `verifyAndUpdate` function and configure it.
+    let call_builder = contract.verifyAndUpdate(proof, public_values);
+
+    // Send the call. Note that this is not broadcasted as a transaction.
+    let call_return = call_builder.call().await?;
+    println!("{call_return:?}"); // verifyAndUpdateReturn
+
+    // Use `send` to broadcast the call as a transaction.
+    let _pending_tx = call_builder.send().await?;
+    Ok(())
+}
+
+pub async fn prove(elf: &[u8], stdin: SP1Stdin, client: ProverClient, push_flag: bool) -> Result<()> {
     // Calculate  1/(n-1) and the square root of 1/n.
     // These values are used in the volatility proof.
     let (pk, vk) = client.setup(elf);
@@ -136,6 +185,12 @@ pub fn prove(elf: &[u8], stdin: SP1Stdin, client: ProverClient) -> Result<()> {
     )?;
 
     println!("successfully generated and verified proof for the program!");
+
+    if push_flag {
+        let public_values_bytes = Bytes::from_str(&proof.public_values.bytes().to_string())?;
+        let proof_bytes = Bytes::from_str(&proof.bytes().to_string())?;
+        send_proof( proof_bytes, public_values_bytes).await?;
+    }
     Ok(())
 }
 
