@@ -11,7 +11,7 @@ use std::fs::read;
 use std::path::PathBuf;
 use std::time::Instant;
 use alloy_network::EthereumWallet;
-use alloy_primitives::{address, Bytes, FixedBytes};
+use alloy_primitives::{address, Bytes, U256, FixedBytes};
 use alloy_provider::ProviderBuilder;
 use alloy_signer_local::PrivateKeySigner;
 use std::env;
@@ -50,9 +50,16 @@ sol! {
         constructor(address) {} // The `deploy` method will also include any constructor arguments.
 
         #[derive(Debug)]
-        function verifyAndUpdate(bytes proof, bytes public_values);
+        function verifyAndUpdate(uint256 claimed_s, bytes proof, bytes public_values);
+
+        #[derive(Debug)]
+        function verifyRvProof(bytes proof, bytes public_values) public view returns (bytes8, bytes8, bytes8, bytes8, bytes32);
+
+        #[derive(Debug)]
+        function setProgramKey(bytes32 vkey);
     }
 }
+
 pub fn setup(elf_path: &str, ticks: Vec<NumberBytes>) -> Result<(Vec<u8>, SP1Stdin, ProverClient)> {
     build_elf::build_elf(ticks.clone(), "src/data.rs", "../program")?;
     let elf = read(elf_path)?;
@@ -94,7 +101,7 @@ pub fn configure_stdin(public_io: PublicData) -> SP1Stdin {
     stdin.write(&n1_inv_bytes);
     stdin
 }
-async fn send_proof(proof: Bytes, public_values: Bytes) -> Result<()> {
+async fn send_proof(vkey: FixedBytes<32>, claimed_s: U256, proof: Bytes, public_values: Bytes) -> Result<()> {
     // Need a private key for signing the transaction
     let private_key = env::var("PRIVATE_KEY")?;
     let drpc_key = env::var("DRPC_KEY")?;
@@ -113,11 +120,16 @@ async fn send_proof(proof: Bytes, public_values: Bytes) -> Result<()> {
         .await?;
 
     // Create a new contract instance can be created with `SnarkBasedFeeOracle::new`.
-    let address = address!("6Ae1e19F65b474B7Eff9A22F33cc72611b0FC24A");
+    let address = address!("549225d8eacF9Ee9f0C8F0f0CA1Fde9853245022");
     let contract = SnarkBasedFeeOracle::new(address, &provider);
 
+    let set_program_key_builder = contract.setProgramKey(vkey);
+    let set_program_key_return = set_program_key_builder.call().await?;
+    println!("{set_program_key_return:?}"); // setProgramKeyReturn
+    let _pending_tx = set_program_key_builder.send().await?;
+
     // Build a call to the `verifyAndUpdate` function and configure it.
-    let call_builder = contract.verifyAndUpdate(proof, public_values);
+    let call_builder = contract.verifyAndUpdate(claimed_s, proof, public_values);
 
     // Send the call. Note that this is not broadcasted as a transaction.
     let call_return = call_builder.call().await?;
@@ -187,9 +199,11 @@ pub async fn prove(elf: &[u8], stdin: SP1Stdin, client: ProverClient, push_flag:
     println!("successfully generated and verified proof for the program!");
 
     if push_flag {
+        let vkey_bytes = FixedBytes::<32>::from_str(&vk.bytes32())?;
+        let claimed_s = U256::from_be_bytes(s.to_be_bytes());
         let public_values_bytes = Bytes::from_str(&proof.public_values.bytes().to_string())?;
         let proof_bytes = Bytes::from_str(&proof.bytes().to_string())?;
-        send_proof( proof_bytes, public_values_bytes).await?;
+        send_proof(vkey_bytes, claimed_s, proof_bytes, public_values_bytes).await?;
     }
     Ok(())
 }
