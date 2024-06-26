@@ -200,7 +200,7 @@ pub async fn prove(elf: &[u8], stdin: SP1Stdin, client: ProverClient, push_flag:
 
     if push_flag {
         let vkey_bytes = FixedBytes::<32>::from_str(&vk.bytes32())?;
-        let claimed_s = U256::from_be_bytes(s.to_be_bytes());
+        let claimed_s = U256::from(u64::from_be_bytes(s.to_be_bytes()));
         let public_values_bytes = Bytes::from_str(&proof.public_values.bytes().to_string())?;
         let proof_bytes = Bytes::from_str(&proof.bytes().to_string())?;
         send_proof(vkey_bytes, claimed_s, proof_bytes, public_values_bytes).await?;
