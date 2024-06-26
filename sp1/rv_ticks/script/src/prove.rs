@@ -229,3 +229,20 @@ pub fn exec(elf: &[u8], stdin: SP1Stdin, client: ProverClient) -> Result<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_send_proof() {
+        let fixture_json = include_str!("./fixture.json");
+        let fixture: Sp1RvTicksFixture = serde_json::from_str(fixture_json).unwrap();
+        let vkey_bytes = FixedBytes::<32>::from_str(&fixture.vkey).unwrap();
+        let claimed_s = U256::from(u64::from_be_bytes(fixture.s.to_be_bytes()));
+        let public_values_bytes = Bytes::from_str(&fixture.public_values).unwrap();
+        let proof_bytes = Bytes::from_str(&fixture.proof).unwrap();
+        send_proof(vkey_bytes, claimed_s, proof_bytes, public_values_bytes).await.unwrap();
+    }
+}
