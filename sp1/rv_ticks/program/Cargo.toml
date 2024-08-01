@@ -8,3 +8,8 @@ edition = "2021"
 fixed = "1.27.0"
 alloy-sol-types = "0.7.2"
 sp1-zkvm = { git = "https://github.com/succinctlabs/sp1.git", rev = "v1.0.5-testnet"  }
+lazy_static = "1.4.0"
+tiny-keccak = { version = "2.0.2", features = ["sha3"] }
+
+[patch.crates-io]
+tiny-keccak = { git = "https://github.com/sp1-patches/tiny-keccak", branch = "patch-v2.0.2" }
