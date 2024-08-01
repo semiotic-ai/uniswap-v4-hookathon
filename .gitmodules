@@ -4,3 +4,6 @@
 [submodule "VolatilityHook-UniV4"]
 	path = VolatilityHook-UniV4
 	url = https://github.com/thanhtrinh2003/VolatilityHook-UniV4
+[submodule "uniswap-v4-frontend"]
+	path = uniswap-v4-frontend
+	url = git@github.com:semiotic-ai/uniswap-v4-frontend.git
