@@ -7,3 +7,6 @@
 [submodule "uniswap-v4-frontend"]
 	path = uniswap-v4-frontend
 	url = git@github.com:semiotic-ai/uniswap-v4-frontend.git
+[submodule "volatility-update-subgraph"]
+	path = volatility-update-subgraph
+	url = https://github.com/semiotic-ai/volatility-update-subgraph
