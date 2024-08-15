@@ -1,31 +1,31 @@
-use crate::build_elf::{read_ticks_from_jsonl, NumberBytes};
-use crate::prove;
+use crate::prover::run;
+use crate::ticks::TickSource;
 use anyhow::Result;
 use regex::Regex;
 use std::cmp::Reverse;
 use std::fs;
 use std::path::PathBuf;
+use nexus_sdk::nova::seq::PP;
 
 // Given a the path to a directory:
 // Loop and check if there are any new files. If so, start from the latest file, read all indices
 // in the file, and store in vector of ticks. If there are less than 8192 entries in the vector,
 // read the next latest file and continue.
 pub fn watch_directory(
-    elf_path: &str,
+    public_params:&PP,
     path: &str,
     latest_block: u64,
-    exec_flag: bool,
+    memlimit: Option<usize>,
+    proof:bool,
+    verify:bool,
 ) -> Result<u64> {
+
     let (ticks, latest_block) = match read_latest_ticks(path, latest_block) {
         Ok(ticks) => ticks,
         Err(error) => return Err(error),
     };
-    let (elf, stdin, client) = prove::setup(elf_path, ticks)?;
-    if exec_flag {
-        prove::exec(elf.as_slice(), stdin, client)?;
-    } else {
-        prove::prove(elf.as_slice(), stdin, client)?;
-    }
+
+    run(public_params, &ticks, memlimit, proof, verify)?;
 
     Ok(latest_block)
 }
@@ -46,7 +46,7 @@ fn parse_filename(filename: &str) -> Result<(u64, u64)> {
     }
 }
 
-fn read_latest_ticks(directory: &str, latest_block: u64) -> Result<(Vec<NumberBytes>, u64)> {
+fn read_latest_ticks(directory: &str, latest_block: u64) -> Result<(Vec<f32>, u64)> {
     let mut files: Vec<PathBuf> = fs::read_dir(directory)?
         .filter_map(Result::ok)
         .map(|entry| entry.path())
@@ -62,12 +62,12 @@ fn read_latest_ticks(directory: &str, latest_block: u64) -> Result<(Vec<NumberBy
         return Err(anyhow::anyhow!("No new blocks"));
     }
     println!("Latest block: {}", new_latest_block);
-    let mut ticks: Vec<NumberBytes> = Vec::new();
+    let mut ticks: Vec<f32> = Vec::new();
     for file in files {
         let (start_block, _) = parse_filename(file.to_str().expect("bad file name"))?;
-        let file = std::fs::File::open(file).expect("Could not open file");
-        let mut reader = std::io::BufReader::new(file);
-        let new_ticks = read_ticks_from_jsonl(&mut reader)?;
+
+        let ticksource = TickSource::Jsonl(file);
+        let new_ticks = ticksource.get_ticks()?;
         ticks.extend(new_ticks.into_iter());
         let num_blocks = new_latest_block - start_block;
         if num_blocks >= 8192 {

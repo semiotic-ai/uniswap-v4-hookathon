@@ -1459,10 +1459,9 @@ dependencies = [
 name = "guest"
 version = "0.1.0"
 dependencies = [
- "fixed",
  "nexus-rt",
  "postcard",
- "tiny-keccak",
+ "serde",
 ]
 
 [[package]]
@@ -1630,6 +1629,7 @@ dependencies = [
  "nexus-sdk",
  "rand 0.8.5",
  "rand_distr",
+ "regex",
  "serde",
  "serde_json",
 ]

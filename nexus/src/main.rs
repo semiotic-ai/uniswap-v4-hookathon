@@ -1,11 +1,15 @@
 use clap::Parser;
 
-mod common;
+mod volatility;
 mod prover;
 mod ticks;
+mod watcher;
 
-use ticks::{PublicData, TickSource};
-use prover::{build, execute, execute_and_prove, get_public_parameters, verify};
+use ticks::TickSource;
+use prover::{get_public_parameters, run};
+use watcher::watch_directory;
+
+const DEFAULT_SAMPLE_SIZE:usize = 8192;
 
 
 #[derive(Parser, Debug)]
@@ -31,6 +35,8 @@ struct Args {
     #[arg(short, long)]
     memory:Option<usize>,
 
+    /// Number of ticks to sample
+    sample:Option<usize>,
 }
 
 
@@ -46,61 +52,27 @@ fn main() {
         // When there are new files, load the ticks and generate a new proof using those ticks.
         // Start from the latest available block and load backwards until there are >= 8192 values for the proof.
         
-        Some(_path) => {
-            unimplemented!("Not implemented")
+        Some(path) => {
+            let mut latest_block = 0;
+            loop {
+                match watch_directory(&pp, &path, latest_block, args.memory,args.proof,args.verify) {
+                    Ok(block) => {
+                        latest_block = block;
+                        println!("Latest block: {}", block);
+                    }
+                    Err(error) => println!("Error loading and proving {}", error),
+                }
+            }
         }
         None => {
             let ticks_source = match args.ticks {
-                Some(ticks) => TickSource::Csv(ticks),
-                None => TickSource::Random,
+                Some(ticks) => TickSource::Csv(ticks.into()),
+                None => TickSource::Random(args.sample.unwrap_or(DEFAULT_SAMPLE_SIZE)),
             };
 
             let ticks = ticks_source.get_ticks().unwrap();
 
-            let prover = build(&ticks, args.memory).unwrap();
-
-            let public_data = PublicData::new(ticks);
-
-            if !args.proof {
-                let _ = execute(prover, &public_data).unwrap();
-            }
-            else {
-                let proof = execute_and_prove(prover, &pp,&public_data).unwrap();
-                  if args.verify {
-                    verify(&proof, &pp).unwrap();
-                }
-            }
+            run(&pp,&ticks,args.memory,args.proof,args.verify).unwrap();
         }
     }
 }
-
-
-
-
-
-
-
-/* fn main2() {
-    println!("Setting up Nova public parameters...");
-    let pp: PP = PP::generate().expect("failed to generate parameters");
-
-    let mut opts = CompileOpts::new(PACKAGE);
-    opts.set_memlimit(8); // use an 8mb memory
-
-    println!("Compiling guest program...");
-    let prover: Nova<Local> = Nova::compile(&opts).expect("failed to compile guest program");
-
-    println!("Proving execution of vm...");
-    prover.prove_with_input(pp, input)
-
-
-    let proof = prover.prove(&pp).expect("failed to prove program");
-
-    println!(">>>>> Logging\n{}<<<<<", proof.logs().join(""));
-
-    print!("Verifying execution...");
-    proof.verify(&pp).expect("failed to verify proof");
-
-    println!("  Succeeded!");
-}
- */
