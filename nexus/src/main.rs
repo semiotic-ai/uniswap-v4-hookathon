@@ -35,6 +35,7 @@ struct Args {
     #[arg(short, long)]
     memory:Option<usize>,
 
+    #[arg(short, long)]
     /// Number of ticks to sample
     sample:Option<usize>,
 }
