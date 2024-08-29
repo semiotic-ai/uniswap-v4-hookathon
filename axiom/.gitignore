@@ -1,0 +1,14 @@
+params
+
+data/pinning.json
+data/pk.bin
+
+# Cargo build
+**/target
+
+# Cargo config
+.cargo
+
+# Environment
+.env 
+
