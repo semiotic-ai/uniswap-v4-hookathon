@@ -19,7 +19,7 @@
             ],
             "label": "Keygen",
             "env": {
-                "PROVIDER_URI": "https://eth-sepolia.g.alchemy.com/v2/KuvUk08CjYXz_aHSAb_GfHa6osVGL4zO",
+                "PROVIDER_URI": "https://eth-sepolia.g.alchemy.com",
                 "RUST_BACKTRACE": "1"
             },
             "group": {

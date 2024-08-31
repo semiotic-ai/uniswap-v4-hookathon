@@ -1,55 +1,32 @@
-
-use axiom_sdk::axiom::{AxiomAPI, AxiomComputeFn, AxiomComputeInput, AxiomResult};
+#![feature(generic_arg_infer)]
+use axiom_sdk::axiom::{AxiomAPI, AxiomComputeFn, AxiomResult};
 use axiom_sdk::cmd::run_cli;
-use axiom_sdk::axiom_circuit;
 use axiom_sdk::Fr;
+use input::{VolatilityCircuitInput, VolatilityInput};
 use volatility::VolatilityChip;
 
 use halo2_base::AssignedValue;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
-use halo2_base::QuantumCell::Constant;
+use std::io::BufReader;
 
+mod fixed;
 mod volatility; 
 mod utils;
+mod input;
 
 const PRECISION: u32 = 48;
-const FILE:&str = "data/ticks_8192.csv";
+const SAMPLE_SIZE: usize = 8192;
+const FILE:&str = "data/inputs.json";
 
-
-#[AxiomComputeInput]
-pub struct VolatilityInput {
-    pub dummy:u32,
-}
-
-impl AxiomComputeFn for VolatilityInput {
+impl AxiomComputeFn for VolatilityInput<PRECISION,SAMPLE_SIZE> {
     fn compute(
         api: &mut AxiomAPI,
-        _: VolatilityCircuitInput<AssignedValue<Fr>>,
+        input: VolatilityCircuitInput<AssignedValue<Fr>,PRECISION,SAMPLE_SIZE>,
     ) -> Vec<AxiomResult> {
-
-        let ticks = File::open(FILE)
-        .map(|file| BufReader::new(file))
-        .map(|reader| reader.lines())
-        .expect("Ticks file can not be read")
-        .skip(1)
-        .map(|line| 
-            line.map(|value|
-                str::parse::<f64>(&value).expect("Can not parse value")
-            ).expect("Can not read line")
-        ).collect::<Vec<_>>();
-
-        println!("\x1b[93mNumber of ticks: {}\x1b[0m",ticks.len());
-
-        let volatility_optmized = utils::calculate_optimized(&ticks);
-        let volatility_original = utils::calculate_original(&ticks);
 
         let chip:VolatilityChip<Fr,PRECISION> = VolatilityChip::new(&api.builder.base);
 
-        let values = ticks
-            .into_iter()
-            .map(|value| Constant(chip.quantization(value)))
-            .collect::<Vec<_>>();
+        let values =  input.0;
 
         let ctx = api.ctx();
         
@@ -57,9 +34,6 @@ impl AxiomComputeFn for VolatilityInput {
         
         let value = chip.dequantization(*volatility.value());
 
-        println!("\x1b[93mVolatility:\x1b[0m");
-        println!("Reference: {}",volatility_original);
-        println!("Optimized: {}",volatility_optmized);
         println!("Axiom    : {}",value);
 
         vec![
@@ -68,8 +42,25 @@ impl AxiomComputeFn for VolatilityInput {
     }
 }
 
-
 fn main() {
+
     env_logger::init();
-    run_cli::<VolatilityInput>();
+
+    let input:VolatilityInput<PRECISION,SAMPLE_SIZE> = File::open(FILE)
+    .map(|file| BufReader::new(file))
+    .map(|reader| serde_json::from_reader(reader).expect("Invalid JSON"))
+    .expect("Input file can not be read");
+
+    let ticks = input.ticks;
+
+    println!("\x1b[93mNumber of ticks: {}\x1b[0m",ticks.len());
+
+    let volatility_optmized = utils::calculate_optimized(&ticks);
+    let volatility_original = utils::calculate_original(&ticks);
+
+    println!("\x1b[93mVolatility:\x1b[0m");
+    println!("Reference: {}",volatility_original);
+    println!("Optimized: {}",volatility_optmized);
+
+    run_cli::<VolatilityInput<PRECISION,SAMPLE_SIZE> >();
 }

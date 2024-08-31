@@ -1,7 +1,8 @@
 params
+data
 
-data/pinning.json
-data/pk.bin
+!data/config.json
+!data/input.json
 
 # Cargo build
 **/target

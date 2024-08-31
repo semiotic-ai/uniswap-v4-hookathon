@@ -1,40 +1,21 @@
 {
     "configurations": [
-    {
-        "type": "lldb",
-        "request": "launch",
-        "name": "Mock",
-        "program": "cargo",
-        "args": [
-            "run",
-            "--",
-            "--input",
-            "data/inputs.json",
-            "--config",
-            "data/config.json",
-            "--degree",
-            "15",
-            "mock",           
-        ],
-        "cwd": "${workspaceFolder}",
-        "envFile": "${workspaceFolder}/.env",
-    },
-    {
-        "type": "lldb",
-        "request": "launch",
-        "name": "Prove",
-        "program": "${workspaceFolder}/target/debug/axiom",
-        "args": [
-            "--input",
-            "data/inputs.json",
-            "--config",
-            "data/config.json",
-            "--degree",
-            "15",
-            "prove",
-        ],
-        "cwd": "${workspaceFolder}",
-        "envFile": "${workspaceFolder}/.env",
-    }
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Prove",
+            "program": "${workspaceFolder}/target/debug/axiom",
+            "args": [
+                "--input",
+                "data/inputs.json",
+                "--config",
+                "data/config.json",
+                "--degree",
+                "15",
+                "prove",
+            ],
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env",
+        }
     ]
 }
