@@ -1,0 +1,15 @@
+params
+data
+
+!data/config.json
+!data/input.json
+
+# Cargo build
+**/target
+
+# Cargo config
+.cargo
+
+# Environment
+.env 
+

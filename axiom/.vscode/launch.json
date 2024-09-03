@@ -1,0 +1,21 @@
+{
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Prove",
+            "program": "${workspaceFolder}/target/debug/axiom",
+            "args": [
+                "--input",
+                "data/inputs.json",
+                "--config",
+                "data/config.json",
+                "--degree",
+                "15",
+                "prove",
+            ],
+            "cwd": "${workspaceFolder}",
+            "envFile": "${workspaceFolder}/.env",
+        }
+    ]
+}

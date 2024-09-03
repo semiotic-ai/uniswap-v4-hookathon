@@ -1,0 +1,31 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "type": "cargo",
+            "command": "run",
+            "args": [
+                "--",
+                "--input",
+                "data/inputs.json",
+                "--config",
+                "data/config.json",
+                "--degree",
+                "15",
+                "keygen"
+            ],
+            "problemMatcher": [
+                "$rustc"
+            ],
+            "label": "Keygen",
+            "env": {
+                "PROVIDER_URI": "https://eth-sepolia.g.alchemy.com",
+                "RUST_BACKTRACE": "1"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}
