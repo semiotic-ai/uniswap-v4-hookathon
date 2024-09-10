@@ -1,0 +1,9 @@
+[package]
+name = "snt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+blitzar = {version = "3.2.1"}
+proof-of-sql= { git = "https://github.com/spaceandtimelabs/sxt-proof-of-sql", branch = "main" , features = ["default","test"]}
