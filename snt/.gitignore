@@ -1,0 +1,9 @@
+# Cargo build
+**/target
+
+# Cargo config
+.cargo
+
+# Environment
+.env 
+
